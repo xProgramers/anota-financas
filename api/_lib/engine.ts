@@ -4,12 +4,12 @@ import { addDays, daysBetween, isValidISODate, periodRange, formatBRDate } from 
 import { heuristicInterpret } from './heuristic.js';
 import { formatBRL } from './money.js';
 import { parseJSONLoose, validateInterpretation } from './validate.js';
-import type { Draft, EngineResult, ImageInput, InterpretContext, Interpretation, ResolvedQuery } from './types.js';
+import { isAudio, type AudioInput, type Draft, type EngineResult, type ImageInput, type InterpretContext, type Interpretation, type MediaInput, type ResolvedQuery } from './types.js';
 
 const CONFIRM_RE = /^(sim|s|ok|okay|isso|isso mesmo|certo|confirm[ao]r?|confirmado|pode (salvar|registrar|confirmar)|salva|salvar|registra|registrar|beleza|blz|perfeito|correto|exato)[.!\s]*$/;
 const CANCEL_RE = /^(nao registra|cancela|cancelar|cancele|descarta|descartar|esquece|esqueca|deixa pra la|apaga( isso)?|nao salva)[.!\s]*$/;
 
-export type Provider = (ctx: InterpretContext, image?: ImageInput) => Promise<{ raw: string; provider: string }>;
+export type Provider = (ctx: InterpretContext, media?: MediaInput) => Promise<{ raw: string; provider: string }>;
 
 export interface EngineOutput {
   result: EngineResult;
@@ -142,8 +142,8 @@ export function finalize(i: Interpretation, ctx: InterpretContext): EngineResult
   return { kind: 'draft', draft, replaces_pending: Boolean(p) };
 }
 
-export async function interpret(ctx: InterpretContext, provider: Provider | null, image?: ImageInput): Promise<EngineOutput> {
-  if (image) return interpretImage(ctx, provider, image);
+export async function interpret(ctx: InterpretContext, provider: Provider | null, media?: MediaInput): Promise<EngineOutput> {
+  if (media) return isAudio(media) ? interpretAudio(ctx, provider, media) : interpretImage(ctx, provider, media);
 
   const quick = shortcut(ctx);
   if (quick) return { result: quick, interpretation: null, raw: null, provider: 'rules' };
@@ -209,6 +209,58 @@ async function interpretImage(ctx: InterpretContext, provider: Provider | null, 
   } catch (err) {
     return {
       result: { kind: 'message', text: 'Não consegui ler essa foto agora. Tente de novo com mais luz e o cupom inteiro no quadro, ou digite o valor.' },
+      interpretation: null,
+      raw: null,
+      provider: 'gemini',
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
+
+/** Falha passageira do provedor (sobrecarga, limite, tempo esgotado). */
+function aiBusy(err: unknown): boolean {
+  return err instanceof Error && /\b(429|500|503|504)\b|Tempo esgotado/.test(err.message);
+}
+
+/**
+ * Áudio: a IA transcreve e interpreta na mesma chamada.
+ * Não há fallback local (sem transcrição não há texto); o áudio não sai desta função.
+ */
+async function interpretAudio(ctx: InterpretContext, provider: Provider | null, audio: AudioInput): Promise<EngineOutput> {
+  if (!provider) {
+    return {
+      result: { kind: 'message', text: 'O lançamento por áudio precisa da IA configurada. Por enquanto, digite o valor e o local da compra.' },
+      interpretation: null,
+      raw: null,
+      provider: 'none',
+    };
+  }
+  // Como a foto, o áudio sempre gera um registro novo (ou uma consulta), nunca mexe no pendente.
+  const audioCtx: InterpretContext = { ...ctx, pending: null };
+  try {
+    const out = await provider(audioCtx, audio);
+    const interpretation = validateInterpretation(parseJSONLoose(out.raw));
+    if (interpretation.intent === 'update_pending') interpretation.intent = 'new_transaction';
+    if (interpretation.intent === 'confirm_pending' || interpretation.intent === 'cancel_pending') interpretation.intent = 'other';
+    if (!interpretation.transcript && interpretation.intent !== 'other') {
+      // Sem transcrição não dá para a pessoa conferir o que foi entendido.
+      interpretation.intent = 'other';
+      interpretation.reply = null;
+    }
+    if (interpretation.intent === 'other' && !interpretation.reply) {
+      interpretation.reply = interpretation.transcript
+        ? `Ouvi: "${interpretation.transcript}". Não encontrei um gasto nisso. Tente algo como "Gastei 30 reais na padaria".`
+        : 'Não consegui entender o áudio. Grave de novo falando onde e quanto você gastou.';
+    }
+    return { result: finalize(interpretation, audioCtx), interpretation, raw: out.raw, provider: out.provider };
+  } catch (err) {
+    return {
+      result: {
+        kind: 'message',
+        text: aiBusy(err)
+          ? 'A IA está sobrecarregada neste momento. Tente gravar de novo em alguns segundos ou digite o gasto.'
+          : 'Não consegui entender o áudio agora. Tente gravar de novo ou digite o gasto.',
+      },
       interpretation: null,
       raw: null,
       provider: 'gemini',

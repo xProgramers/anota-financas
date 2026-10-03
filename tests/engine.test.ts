@@ -176,3 +176,39 @@ test('foto: usa só a IA, ignora o pendente e exige valor', async () => {
   const falha = await interpret(ctx(''), async () => { throw new Error('boom'); }, img);
   assert.equal(falha.result.kind, 'message');
 });
+
+test('áudio: transcreve, ignora o pendente e gera rascunho', async () => {
+  const pending = await draftOf('gastei 50 no restaurante');
+  const audio = { data: 'A'.repeat(200), mimeType: 'audio/wav' as const };
+  let seen: unknown = null;
+  const fake = async (c: InterpretContext, m?: unknown) => {
+    seen = m;
+    assert.equal(c.pending, null);
+    return {
+      raw: JSON.stringify({ intent: 'update_pending', is_transaction: true, transaction_type: 'expense', amount: 45, category: 'Alimentação', description: 'Padaria', date: null, confidence: 0.9, needs_confirmation: true, transcript: 'Gastei 45 reais na padaria' }),
+      provider: 'fake',
+    };
+  };
+  const out = await interpret(ctx('', pending), fake, audio);
+  assert.equal(seen, audio, 'o áudio deve chegar ao provedor');
+  assert.equal(out.interpretation?.transcript, 'Gastei 45 reais na padaria');
+  assert.ok(out.result.kind === 'draft' && out.result.draft.amount === 45 && !out.result.replaces_pending);
+  assert.ok(out.result.kind === 'draft' && out.result.draft.description === 'Padaria' && out.result.draft.date === TODAY);
+});
+
+test('áudio: sem IA, sem transcrição ou com falha vira mensagem', async () => {
+  const audio = { data: 'A'.repeat(200), mimeType: 'audio/wav' as const };
+  const semIA = await interpret(ctx(''), null, audio);
+  assert.ok(semIA.result.kind === 'message' && /IA/.test(semIA.result.text));
+
+  const mudo = await interpret(ctx(''), async () => ({ raw: JSON.stringify({ intent: 'new_transaction', is_transaction: true, amount: 10, confidence: 0.2, transcript: null }), provider: 'f' }), audio);
+  assert.ok(mudo.result.kind === 'message' && /grave de novo/i.test(mudo.result.text));
+
+  const confirma = await interpret(ctx(''), async () => ({ raw: JSON.stringify({ intent: 'confirm_pending', is_transaction: false, confidence: 0.9, transcript: 'sim' }), provider: 'f' }), audio);
+  assert.ok(confirma.result.kind === 'message' && /Ouvi: "sim"/.test(confirma.result.text));
+
+  const falha = await interpret(ctx(''), async () => { throw new Error('boom'); }, audio);
+  assert.ok(falha.result.kind === 'message' && falha.error === 'boom' && /entender/.test(falha.result.text));
+  const ocupada = await interpret(ctx(''), async () => { throw new Error('Gemini respondeu 503: high demand'); }, audio);
+  assert.ok(ocupada.result.kind === 'message' && /sobrecarregada/.test(ocupada.result.text));
+});

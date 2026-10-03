@@ -83,5 +83,6 @@ export function validateInterpretation(data: unknown): Interpretation {
     clarification_question: str(d.clarification_question, 200),
     query,
     reply: str(d.reply, 400),
+    transcript: str(d.transcript, 500),
   };
 }

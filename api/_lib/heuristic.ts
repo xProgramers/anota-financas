@@ -194,6 +194,7 @@ export function emptyInterpretation(intent: Interpretation['intent']): Interpret
     clarification_question: null,
     query: null,
     reply: null,
+    transcript: null,
   };
 }
 
