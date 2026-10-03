@@ -16,7 +16,17 @@ interface Props {
   onDiscard: () => void;
 }
 
-/** A interpretação da IA impressa como um cupom, antes de virar transação. */
+function Row({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-baseline gap-2 text-[13px]">
+      <span className="shrink-0 text-slip-muted uppercase">{label}</span>
+      <span className="min-w-4 flex-1 translate-y-[-3px] border-b border-dotted border-slip-muted/50" aria-hidden />
+      <span className="max-w-[60%] truncate text-right">{value}</span>
+    </div>
+  );
+}
+
+/** A interpretação da IA impressa como o comprovante de uma maquininha de cartão. */
 export function DraftCard({ message, today, currency, isLatestPending, onConfirm, onEdit, onDiscard }: Props) {
   const { byId } = useCategories();
   const [confirming, setConfirming] = useState(false);
@@ -31,46 +41,58 @@ export function DraftCard({ message, today, currency, isLatestPending, onConfirm
     try {
       await onConfirm();
     } catch {
-      /* o hook já mostra o erro */
+      /* o erro já aparece em um aviso */
     } finally {
       setConfirming(false);
     }
   }
 
   return (
-    <div className={`w-full max-w-[22rem] ${status === 'discarded' ? 'opacity-55' : ''}`}>
-      <div className={`receipt print-in rounded-t-xl border-x border-t border-line px-4 pt-4 shadow-[0_1px_0_var(--line)]`}>
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex min-w-0 items-center gap-2.5">
+    <div className={`w-full max-w-[20rem] ${status === 'discarded' ? 'opacity-60' : ''}`}>
+      <div className="receipt-wrap">
+        <div className="receipt print-in px-5">
+          <div className="flex flex-col items-center text-center">
             <CategoryIcon icon={category?.icon} color={category?.color} size="sm" />
-            <span className="truncate text-sm font-medium">{category?.name ?? d.category_name ?? 'Categoria a definir'}</span>
+            <p className="mt-1.5 text-[13px] font-semibold tracking-wide uppercase">
+              {category?.name ?? d.category_name ?? 'Categoria a definir'}
+            </p>
+            <p className={`text-[11px] tracking-widest uppercase ${isIncome ? 'text-income' : 'text-slip-muted'}`}>
+              {isIncome ? 'Receita' : 'Despesa'}
+            </p>
           </div>
-          <span className={`shrink-0 text-xs font-medium ${isIncome ? 'text-income' : 'text-expense'}`}>{isIncome ? 'Receita' : 'Despesa'}</span>
+
+          <div className="receipt-rule my-3" />
+
+          <div className="space-y-1.5">
+            <Row label="Descrição" value={d.description || '—'} />
+            <Row label="Data" value={friendlyDate(d.date, today)} />
+          </div>
+
+          <div className="receipt-rule my-3" />
+
+          <div className="flex items-baseline justify-between">
+            <span className="text-[13px] font-semibold tracking-wide uppercase">Total</span>
+            <span className={`text-[24px] leading-none font-semibold tracking-tight ${d.amount === null ? 'text-slip-muted' : ''}`}>
+              {d.amount === null ? 'R$ —' : `${isIncome ? '+' : ''}${formatMoney(d.amount, currency)}`}
+            </span>
+          </div>
+
+          {status === 'confirmed' && (
+            <p className="mt-4 flex items-center justify-center gap-1.5 text-[12px] font-semibold tracking-widest text-income uppercase">
+              <Check className="size-4" aria-hidden /> {isIncome ? 'Receita registrada' : 'Despesa registrada'}
+            </p>
+          )}
+          {status === 'discarded' && (
+            <p className="mt-4 text-center text-[12px] tracking-widest text-slip-muted uppercase">Não registrado</p>
+          )}
+          {status === 'pending' && !complete && (
+            <p className="mt-4 text-center text-[12px] tracking-wide text-slip-muted">{isLatestPending ? 'Responda abaixo para completar' : 'Incompleto'}</p>
+          )}
         </div>
-
-        <p className={`mt-4 font-mono text-[28px] leading-none font-semibold tracking-tight ${d.amount === null ? 'text-muted' : ''}`}>
-          {d.amount === null ? 'R$ —' : `${isIncome ? '+ ' : ''}${formatMoney(d.amount, currency)}`}
-        </p>
-
-        <div className="dotted-rule mt-4 pt-3">
-          <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-sm">
-            <dt className="text-muted">Descrição</dt>
-            <dd className="truncate text-right">{d.description || '—'}</dd>
-            <dt className="text-muted">Data</dt>
-            <dd className="text-right">{friendlyDate(d.date, today)}</dd>
-          </dl>
-        </div>
-
-        {status === 'confirmed' && (
-          <p className="mt-4 flex items-center gap-1.5 text-sm font-semibold text-income">
-            <Check className="size-4" aria-hidden /> {isIncome ? 'Receita registrada' : 'Despesa registrada'}
-          </p>
-        )}
-        {status === 'discarded' && <p className="mt-4 text-sm text-muted">Não registrado</p>}
       </div>
 
       {status === 'pending' && (
-        <div className="mt-2 flex items-center gap-2">
+        <div className="mt-3 flex items-center gap-2">
           <Button size="sm" onClick={confirm} loading={confirming} disabled={!complete} icon={<Check className="size-4" />}>
             Confirmar
           </Button>
@@ -80,7 +102,6 @@ export function DraftCard({ message, today, currency, isLatestPending, onConfirm
           <Button size="sm" variant="ghost" onClick={onDiscard} aria-label="Descartar" title="Descartar">
             <X className="size-4" />
           </Button>
-          {!complete && isLatestPending && <span className="text-xs text-muted">Responda abaixo</span>}
         </div>
       )}
     </div>

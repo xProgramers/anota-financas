@@ -1,4 +1,5 @@
-import { AlertCircle, Camera, RotateCw } from 'lucide-react';
+import { AlertCircle, RotateCw } from 'lucide-react';
+import { ScanReceiptIcon } from '../../components/ScanReceiptIcon';
 import { Fragment, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -11,6 +12,7 @@ import { TransactionModal } from '../transactions/TransactionModal';
 import { ChatInput } from './ChatInput';
 import { useChat, type LocalMessage } from './ChatProvider';
 import { DraftCard } from './DraftCard';
+import { usePhotoPicker } from './usePhotoPicker';
 
 const EXAMPLES = ['Gastei R$ 25 no almoço', 'Uber 18,50', 'Recebi meu salário de 4.500', 'Quanto gastei esse mês?'];
 
@@ -35,8 +37,8 @@ export function ChatPage() {
   const [preparing, setPreparing] = useState(false);
   const [editing, setEditing] = useState<(ChatMessage & { draft: Draft }) | null>(null);
   const scroller = useRef<HTMLDivElement>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
-  const pickPhoto = () => fileRef.current?.click();
+  const photo = usePhotoPicker((file) => void sendPhoto(file));
+  const pickPhoto = photo.open;
   const firstRender = useRef(true);
 
   const latestPendingId = useMemo(
@@ -99,7 +101,7 @@ export function ChatPage() {
                   onClick={pickPhoto}
                   className="inline-flex items-center gap-2 rounded-full bg-brand px-3.5 py-2 text-sm font-medium text-brand-ink transition hover:brightness-110"
                 >
-                  <Camera className="size-4" aria-hidden />
+                  <ScanReceiptIcon className="size-[18px]" />
                   Foto de nota ou cupom
                 </button>
                 {EXAMPLES.map((ex) => (
@@ -169,17 +171,7 @@ export function ChatPage() {
 
       <div className="shrink-0 bg-gradient-to-t from-paper via-paper to-paper/0 pt-2 pb-[max(12px,env(safe-area-inset-bottom))]">
         <div className="mx-auto w-full max-w-2xl px-3 md:px-6">
-          <input
-            ref={fileRef}
-            type="file"
-            accept="image/*"
-            className="hidden"
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              e.target.value = ''; // permite escolher a mesma foto de novo
-              if (file) void sendPhoto(file);
-            }}
-          />
+          {photo.element}
           <ChatInput value={text} onChange={setText} onSend={() => submit()} onPickPhoto={pickPhoto} disabled={busy} />
           <p className="mt-2 hidden text-center text-xs text-muted md:block">
             Enter envia, Shift + Enter quebra a linha. Fotos não são guardadas.
