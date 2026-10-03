@@ -181,6 +181,7 @@ export async function POST(request: Request): Promise<Response> {
       raw_response: out.raw?.slice(0, 20000) ?? null,
       parsed_data: out.interpretation,
       confidence: out.interpretation?.confidence ?? null,
+      error: out.error?.slice(0, 1000) ?? null,
     });
 
     // ---------- Ação ----------
