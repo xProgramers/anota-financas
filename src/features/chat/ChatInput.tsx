@@ -19,8 +19,14 @@ export function ChatInput({ value, onChange, onSend, onPickPhoto, disabled }: Pr
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    el.style.height = 'auto';
-    el.style.height = `${Math.min(el.scrollHeight, 140)}px`;
+    const fit = () => {
+      el.style.height = 'auto';
+      // vazio = sempre uma linha (o placeholder não deve esticar a caixa)
+      el.style.height = el.value ? `${Math.min(el.scrollHeight, 140)}px` : '';
+    };
+    fit();
+    window.addEventListener('resize', fit);
+    return () => window.removeEventListener('resize', fit);
   }, [value]);
 
   useEffect(() => {
@@ -61,8 +67,8 @@ export function ChatInput({ value, onChange, onSend, onPickPhoto, disabled }: Pr
         value={value}
         onChange={(e) => onChange(e.target.value)}
         onKeyDown={onKeyDown}
-        placeholder="Anote um gasto, uma receita ou pergunte…"
-        className="chat-field max-h-[140px] min-h-11 flex-1 resize-none bg-transparent px-1 py-[10px] text-base leading-6 text-ink outline-none placeholder:text-muted/70"
+        placeholder="Anote um gasto ou pergunte…"
+        className="chat-field h-11 max-h-[140px] min-h-11 flex-1 resize-none bg-transparent px-1 py-[10px] text-base leading-6 text-ink outline-none placeholder:text-muted/70"
         autoComplete="off"
         enterKeyHint="send"
       />
