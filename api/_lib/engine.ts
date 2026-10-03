@@ -4,12 +4,12 @@ import { addDays, daysBetween, isValidISODate, periodRange, formatBRDate } from 
 import { heuristicInterpret } from './heuristic.js';
 import { formatBRL } from './money.js';
 import { parseJSONLoose, validateInterpretation } from './validate.js';
-import type { Draft, EngineResult, InterpretContext, Interpretation, ResolvedQuery } from './types.js';
+import type { Draft, EngineResult, ImageInput, InterpretContext, Interpretation, ResolvedQuery } from './types.js';
 
 const CONFIRM_RE = /^(sim|s|ok|okay|isso|isso mesmo|certo|confirm[ao]r?|confirmado|pode (salvar|registrar|confirmar)|salva|salvar|registra|registrar|beleza|blz|perfeito|correto|exato)[.!\s]*$/;
 const CANCEL_RE = /^(nao registra|cancela|cancelar|cancele|descarta|descartar|esquece|esqueca|deixa pra la|apaga( isso)?|nao salva)[.!\s]*$/;
 
-export type Provider = (ctx: InterpretContext) => Promise<{ raw: string; provider: string }>;
+export type Provider = (ctx: InterpretContext, image?: ImageInput) => Promise<{ raw: string; provider: string }>;
 
 export interface EngineOutput {
   result: EngineResult;
@@ -142,7 +142,9 @@ export function finalize(i: Interpretation, ctx: InterpretContext): EngineResult
   return { kind: 'draft', draft, replaces_pending: Boolean(p) };
 }
 
-export async function interpret(ctx: InterpretContext, provider: Provider | null): Promise<EngineOutput> {
+export async function interpret(ctx: InterpretContext, provider: Provider | null, image?: ImageInput): Promise<EngineOutput> {
+  if (image) return interpretImage(ctx, provider, image);
+
   const quick = shortcut(ctx);
   if (quick) return { result: quick, interpretation: null, raw: null, provider: 'rules' };
 
@@ -166,6 +168,53 @@ export async function interpret(ctx: InterpretContext, provider: Provider | null
     provider: 'local',
     error,
   };
+}
+
+/**
+ * Foto de nota/cupom fiscal: só a IA com visão consegue ler.
+ * Não há fallback local; a imagem não sai desta função (não é salva nem registrada).
+ */
+async function interpretImage(ctx: InterpretContext, provider: Provider | null, image: ImageInput): Promise<EngineOutput> {
+  if (!provider) {
+    return {
+      result: { kind: 'message', text: 'A leitura de fotos precisa da IA configurada. Por enquanto, digite o valor e o local da compra.' },
+      interpretation: null,
+      raw: null,
+      provider: 'none',
+    };
+  }
+  // Foto sempre gera um registro novo, nunca corrige o pendente.
+  const photoCtx: InterpretContext = { ...ctx, pending: null };
+  try {
+    const out = await provider(photoCtx, image);
+    const interpretation = validateInterpretation(parseJSONLoose(out.raw));
+    if (interpretation.intent === 'new_transaction' || interpretation.intent === 'update_pending') {
+      interpretation.intent = 'new_transaction';
+      // Sem valor legível não há o que registrar a partir da foto.
+      if (interpretation.amount === null) {
+        return {
+          result: {
+            kind: 'message',
+            text: interpretation.clarification_question ?? 'Não consegui ler o valor total nessa foto. Tente outra foto mais nítida ou digite o valor.',
+          },
+          interpretation,
+          raw: out.raw,
+          provider: out.provider,
+        };
+      }
+    } else if (interpretation.intent !== 'other') {
+      interpretation.intent = 'other';
+    }
+    return { result: finalize(interpretation, photoCtx), interpretation, raw: out.raw, provider: out.provider };
+  } catch (err) {
+    return {
+      result: { kind: 'message', text: 'Não consegui ler essa foto agora. Tente de novo com mais luz e o cupom inteiro no quadro, ou digite o valor.' },
+      interpretation: null,
+      raw: null,
+      provider: 'gemini',
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
 }
 
 /** Texto curto que resume o rascunho (vira o conteúdo da mensagem do assistente). */

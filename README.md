@@ -165,6 +165,19 @@ npm run build       # build de produção
 5. **Esclarecimentos**: sem valor, o app pergunta "Quanto você gastou no almoço?". Com valor e sem contexto, pergunta "O que você pagou com esses R$ 35?". Nada é inventado.
 6. **Confirmação**: só o botão **Confirmar**, a edição pelo formulário ou uma resposta "sim" gravam a transação, sempre pelo RPC `confirm_draft`.
 
+### Fotos de nota/cupom fiscal
+
+1. No chat, o botão de câmera abre a câmera ou a galeria.
+2. O **navegador** reduz a foto (no máximo 1600 px, em JPEG), e o arquivo original não sai do aparelho.
+3. A função `/api/ai/interpret` recebe a imagem reduzida, valida o tipo e o tamanho e a envia ao Gemini junto com regras específicas: usar o valor TOTAL pago, o nome do estabelecimento e a data impressa. Textos dentro da imagem são tratados como dados, nunca como instruções.
+4. A foto **não é salva em lugar nenhum**: nem no banco, nem em storage, nem em logs. No histórico fica só o texto "📷 Foto de comprovante".
+5. A miniatura existe apenas na memória da página e é descartada quando o registro é confirmado ou cancelado, ou quando a foto não pôde ser lida.
+6. Sem `GEMINI_API_KEY`, o app avisa que a leitura de fotos precisa da IA.
+
+### Chat limpo a cada acesso
+
+O chat começa vazio sempre que a página é carregada. A conversa continua visível ao trocar de aba dentro do app, mas some ao recarregar. Rascunhos não confirmados de sessões anteriores são descartados automaticamente, para não servirem de contexto invisível para a IA. As transações confirmadas continuam em **Transações** e **Resumo**.
+
 ## 8. Segurança
 
 - RLS em todas as tabelas, e as funções SQL usam `search_path` fixo.

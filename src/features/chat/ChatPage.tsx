@@ -1,14 +1,16 @@
 import { AlertCircle, RotateCw } from 'lucide-react';
-import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
-import { ErrorState, Spinner } from '../../components/ui/States';
+import { toast } from 'sonner';
+import { Spinner } from '../../components/ui/States';
 import { addDays, formatBRDate, timeOf, todayIn } from '../../lib/format';
+import { prepareReceiptImage } from '../../lib/image';
 import type { ChatMessage, Draft } from '../../types/db';
 import { useAuth } from '../auth/AuthProvider';
 import { TransactionModal } from '../transactions/TransactionModal';
 import { ChatInput } from './ChatInput';
+import { useChat, type LocalMessage } from './ChatProvider';
 import { DraftCard } from './DraftCard';
-import { useChat, type LocalMessage } from './useChat';
 
 const EXAMPLES = ['Gastei R$ 25 no almoço', 'Uber 18,50', 'Recebi meu salário de 4.500', 'Quanto gastei esse mês?'];
 
@@ -23,59 +25,53 @@ function dayLabel(key: string, today: string) {
 }
 
 export function ChatPage() {
-  const { session, profile } = useAuth();
+  const { profile } = useAuth();
   const location = useLocation();
   const tz = profile?.timezone ?? 'America/Sao_Paulo';
   const currency = profile?.currency ?? 'BRL';
   const { today } = todayIn(tz);
-  const chat = useChat(session!.user.id);
+  const chat = useChat();
   const [text, setText] = useState('');
+  const [preparing, setPreparing] = useState(false);
   const [editing, setEditing] = useState<(ChatMessage & { draft: Draft }) | null>(null);
   const scroller = useRef<HTMLDivElement>(null);
-  const stickToBottom = useRef(true);
-  const prevCount = useRef(0);
-  const prevFirstId = useRef<string | undefined>(undefined);
+  const firstRender = useRef(true);
 
   const latestPendingId = useMemo(
     () => [...chat.messages].reverse().find((m) => m.draft_status === 'pending')?.id,
     [chat.messages],
   );
 
-  // Rolagem: segue o fim da conversa; ao carregar mensagens antigas, preserva a posição.
-  const prevHeight = useRef(0);
+  // Sempre acompanha o fim da conversa.
   useLayoutEffect(() => {
     const el = scroller.current;
     if (!el) return;
-    const firstId = chat.messages[0]?.id;
-    const prependedOlder = prevFirstId.current && firstId !== prevFirstId.current && chat.messages.length > prevCount.current;
-    if (prependedOlder && !stickToBottom.current) {
-      el.scrollTop = el.scrollHeight - prevHeight.current + el.scrollTop;
-    } else if (stickToBottom.current || chat.messages.length > prevCount.current) {
-      el.scrollTo({ top: el.scrollHeight, behavior: prevCount.current ? 'smooth' : 'auto' });
-    }
-    prevCount.current = chat.messages.length;
-    prevFirstId.current = firstId;
-    prevHeight.current = el.scrollHeight;
+    el.scrollTo({ top: el.scrollHeight, behavior: firstRender.current ? 'auto' : 'smooth' });
+    firstRender.current = false;
   }, [chat.messages, chat.sending]);
 
-  useEffect(() => {
-    const el = scroller.current;
-    if (!el) return;
-    const onScroll = () => {
-      stickToBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
-      prevHeight.current = el.scrollHeight;
-      if (el.scrollTop < 60 && chat.hasMore) void chat.loadOlder();
-    };
-    el.addEventListener('scroll', onScroll, { passive: true });
-    return () => el.removeEventListener('scroll', onScroll);
-  }, [chat]);
+  const busy = Boolean(chat.sending) || preparing || !chat.ready;
 
   function submit(value = text) {
     const v = value.trim();
-    if (!v || chat.sending) return;
+    if (!v || busy) return;
     setText('');
-    stickToBottom.current = true;
     void chat.send(v);
+  }
+
+  async function sendPhoto(file: File) {
+    if (busy) return;
+    setPreparing(true);
+    try {
+      const image = await prepareReceiptImage(file);
+      const caption = text.trim();
+      setText('');
+      void chat.send(caption, image);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Não consegui usar essa foto.');
+    } finally {
+      setPreparing(false);
+    }
   }
 
   const welcome = Boolean((location.state as { welcome?: boolean } | null)?.welcome);
@@ -85,15 +81,16 @@ export function ChatPage() {
     <div className="flex min-h-0 flex-1 flex-col">
       <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto" aria-live="polite">
         <div className="mx-auto flex w-full max-w-2xl flex-col px-4 pt-6 pb-4 md:px-6">
-          {chat.loading && <Spinner label="Carregando conversa…" />}
-          {chat.loadError && <ErrorState message={chat.loadError} onRetry={() => void chat.load()} />}
+          {!chat.ready && <Spinner label="Preparando…" />}
 
-          {!chat.loading && !chat.loadError && chat.messages.length === 0 && (
+          {chat.ready && chat.messages.length === 0 && (
             <div className="flex flex-col pt-[12vh] pb-8">
               <h1 className="max-w-md text-[26px] leading-snug font-semibold tracking-tight">
                 {welcome || !firstName ? 'Vamos começar.' : `Oi, ${firstName}.`} Você pode escrever seus gastos normalmente.
               </h1>
-              <p className="mt-3 text-[15px] text-muted">Eu entendo o valor, a categoria e a data. Você só confirma.</p>
+              <p className="mt-3 text-[15px] text-muted">
+                Eu entendo o valor, a categoria e a data. Você só confirma. Também dá para mandar a foto de uma nota ou cupom fiscal.
+              </p>
               <div className="mt-8 flex flex-wrap gap-2">
                 {EXAMPLES.map((ex) => (
                   <button
@@ -107,12 +104,6 @@ export function ChatPage() {
                 ))}
               </div>
             </div>
-          )}
-
-          {chat.hasMore && !chat.loading && (
-            <button type="button" onClick={() => void chat.loadOlder()} className="mx-auto mb-4 text-sm text-muted hover:text-ink">
-              Carregar mensagens anteriores
-            </button>
           )}
 
           {chat.messages.map((m, i) => {
@@ -135,7 +126,7 @@ export function ChatPage() {
                   today={today}
                   currency={currency}
                   isLatestPending={m.id === latestPendingId}
-                  onRetry={() => void chat.send(m.content, m.id)}
+                  onRetry={() => void chat.send(m.content.replace(/^📷 Foto de comprovante:? ?/, ''), m.retryImage, m.id)}
                   onConfirm={async (msg) => {
                     const d = msg.draft;
                     await chat.confirmDraft(msg, {
@@ -153,14 +144,14 @@ export function ChatPage() {
             );
           })}
 
-          {chat.sending && (
+          {(chat.sending || preparing) && (
             <div className="mt-3 flex items-center gap-2 text-sm text-muted" role="status">
               <span className="typing inline-flex gap-0.5 text-lg leading-none text-brand" aria-hidden>
                 <span>•</span>
                 <span>•</span>
                 <span>•</span>
               </span>
-              Analisando sua anotação…
+              {preparing ? 'Preparando a foto…' : chat.sending === 'photo' ? 'Lendo o comprovante…' : 'Analisando sua anotação…'}
             </div>
           )}
         </div>
@@ -168,8 +159,10 @@ export function ChatPage() {
 
       <div className="shrink-0 bg-gradient-to-t from-paper via-paper to-paper/0 pt-2 pb-[max(12px,env(safe-area-inset-bottom))]">
         <div className="mx-auto w-full max-w-2xl px-3 md:px-6">
-          <ChatInput value={text} onChange={setText} onSend={() => submit()} disabled={chat.sending} />
-          <p className="mt-2 hidden text-center text-xs text-muted md:block">Enter envia, Shift + Enter quebra a linha</p>
+          <ChatInput value={text} onChange={setText} onSend={() => submit()} onPhoto={(f) => void sendPhoto(f)} disabled={busy} />
+          <p className="mt-2 hidden text-center text-xs text-muted md:block">
+            Enter envia, Shift + Enter quebra a linha. Fotos não são guardadas.
+          </p>
         </div>
       </div>
 
@@ -215,6 +208,13 @@ function MessageRow({ message: m, showTime, today, currency, isLatestPending, on
     return (
       <div className={`flex flex-col items-end ${showTime ? 'mt-4' : 'mt-1.5'}`}>
         {time}
+        {m.photoUrl && (
+          <img
+            src={m.photoUrl}
+            alt="Foto do comprovante enviada"
+            className={`mb-1.5 max-h-56 max-w-[60%] rounded-xl border border-line object-cover ${m.local === 'sending' ? 'opacity-70' : ''}`}
+          />
+        )}
         <div
           className={`max-w-[85%] rounded-2xl rounded-br-md bg-ink px-4 py-2.5 text-[15px] leading-relaxed whitespace-pre-wrap text-paper ${
             m.local === 'sending' ? 'opacity-70' : ''
@@ -222,6 +222,7 @@ function MessageRow({ message: m, showTime, today, currency, isLatestPending, on
         >
           {m.content}
         </div>
+        {m.photoDiscarded && <span className="mt-1 text-[11px] text-muted">Foto descartada</span>}
         {m.local === 'failed' && (
           <button type="button" onClick={onRetry} className="mt-1 flex items-center gap-1 text-xs font-medium text-danger">
             <AlertCircle className="size-3.5" /> Não enviada. <RotateCw className="size-3" /> Tentar de novo

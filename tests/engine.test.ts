@@ -151,3 +151,28 @@ test('IA com JSON inválido cai no interpretador local', async () => {
   assert.equal(out.provider, 'local');
   assert.ok(out.result.kind === 'draft' && out.result.draft.amount === 22);
 });
+
+test('foto: usa só a IA, ignora o pendente e exige valor', async () => {
+  const pending = await draftOf('gastei 50 no restaurante');
+  const img = { data: 'A'.repeat(200), mimeType: 'image/jpeg' as const };
+  let seenPending: unknown = 'unset';
+  const fake = async (c: InterpretContext, i?: unknown) => {
+    seenPending = c.pending;
+    assert.ok(i, 'a imagem deve chegar ao provedor');
+    return {
+      raw: JSON.stringify({ intent: 'update_pending', is_transaction: true, transaction_type: 'expense', amount: 87.9, category: 'Alimentação', description: 'Supermercado Dia', date: '2026-09-30', confidence: 0.9, needs_confirmation: true }),
+      provider: 'fake',
+    };
+  };
+  const out = await interpret(ctx('', pending), fake, img);
+  assert.equal(seenPending, null);
+  assert.ok(out.result.kind === 'draft' && out.result.draft.amount === 87.9 && !out.result.replaces_pending);
+  assert.ok(out.result.kind === 'draft' && out.result.draft.date === '2026-09-30' && out.result.draft.category_name === 'Alimentação');
+
+  const semValor = await interpret(ctx(''), async () => ({ raw: JSON.stringify({ intent: 'new_transaction', is_transaction: true, amount: null, confidence: 0.3 }), provider: 'f' }), img);
+  assert.equal(semValor.result.kind, 'message');
+  const semIA = await interpret(ctx(''), null, img);
+  assert.ok(semIA.result.kind === 'message' && /IA/.test(semIA.result.text));
+  const falha = await interpret(ctx(''), async () => { throw new Error('boom'); }, img);
+  assert.equal(falha.result.kind, 'message');
+});

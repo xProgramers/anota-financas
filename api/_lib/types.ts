@@ -72,6 +72,12 @@ export interface Interpretation {
   reply: string | null;
 }
 
+/** Foto de comprovante. Fica só na memória durante a requisição; nunca é salva. */
+export interface ImageInput {
+  data: string; // base64 sem prefixo data:
+  mimeType: 'image/jpeg' | 'image/png' | 'image/webp';
+}
+
 export interface InterpretContext {
   text: string;
   today: string; // YYYY-MM-DD no fuso do usuário

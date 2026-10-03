@@ -8,11 +8,25 @@ import { todayIn } from '../_lib/dates.js';
 import { describeDraft, interpret, type Provider } from '../_lib/engine.js';
 import { callGemini } from '../_lib/gemini.js';
 import { formatBRL } from '../_lib/money.js';
-import type { CategoryRef, Draft, InterpretContext } from '../_lib/types.js';
+import type { CategoryRef, Draft, ImageInput, InterpretContext } from '../_lib/types.js';
 
 const MAX_MESSAGE = 500;
 const LIMIT_PER_MINUTE = 12;
 const LIMIT_PER_DAY = 300;
+// ~3 MB de base64 (o navegador já reduz a foto para ~200–600 KB)
+const MAX_IMAGE_BASE64 = 4_000_000;
+const IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'] as const;
+
+/** Valida a foto recebida. Ela só existe na memória desta requisição. */
+function readImage(raw: unknown): ImageInput | null | 'invalid' {
+  if (raw == null) return null;
+  if (typeof raw !== 'object') return 'invalid';
+  const { data, mimeType } = raw as { data?: unknown; mimeType?: unknown };
+  if (typeof data !== 'string' || typeof mimeType !== 'string') return 'invalid';
+  if (!(IMAGE_TYPES as readonly string[]).includes(mimeType)) return 'invalid';
+  if (data.length < 100 || data.length > MAX_IMAGE_BASE64 || !/^[A-Za-z0-9+/]+=*$/.test(data)) return 'invalid';
+  return { data, mimeType: mimeType as ImageInput['mimeType'] };
+}
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -93,10 +107,12 @@ export async function POST(request: Request): Promise<Response> {
   } catch {
     return json({ error: 'Corpo da requisição inválido.' }, 400);
   }
-  const rawText = (body as { message?: unknown })?.message;
-  if (typeof rawText !== 'string') return json({ error: 'Mensagem ausente.' }, 400);
+  const rawText = (body as { message?: unknown })?.message ?? '';
+  if (typeof rawText !== 'string') return json({ error: 'Mensagem inválida.' }, 400);
   const text = rawText.replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, '').trim();
-  if (!text) return json({ error: 'Digite uma mensagem.' }, 400);
+  const image = readImage((body as { image?: unknown })?.image);
+  if (image === 'invalid') return json({ error: 'Foto inválida ou grande demais. Use JPG, PNG ou WebP.' }, 400);
+  if (!text && !image) return json({ error: 'Digite uma mensagem.' }, 400);
   if (text.length > MAX_MESSAGE) return json({ error: `A mensagem pode ter no máximo ${MAX_MESSAGE} caracteres.` }, 400);
 
   try {
@@ -145,7 +161,8 @@ export async function POST(request: Request): Promise<Response> {
     // ---------- Mensagem do usuário ----------
     const { data: userMessage, error: userMsgError } = await db
       .from('chat_messages')
-      .insert({ user_id: userId, role: 'user', content: text })
+      // A foto em si não é salva: só um marcador no histórico.
+      .insert({ user_id: userId, role: 'user', content: image ? `📷 Foto de comprovante${text ? `: ${text}` : ''}`.slice(0, 2000) : text })
       .select()
       .single();
     if (userMsgError) throw userMsgError;
@@ -153,8 +170,8 @@ export async function POST(request: Request): Promise<Response> {
     // ---------- Interpretação ----------
     const apiKey = env('GEMINI_API_KEY');
     const model = env('GEMINI_MODEL') ?? 'gemini-2.5-flash';
-    const provider: Provider | null = apiKey ? (c) => callGemini(c, apiKey, model) : null;
-    const out = await interpret(ctx, provider);
+    const provider: Provider | null = apiKey ? (c, img) => callGemini(c, apiKey, model, img) : null;
+    const out = await interpret(ctx, provider, image ?? undefined);
     if (out.error) console.warn('[ai] fallback para interpretador local:', out.error);
 
     await db.from('ai_interpretations').insert({

@@ -1,6 +1,6 @@
 // Cliente mínimo da API do Gemini (Google AI Studio), via REST.
-import { buildSystemPrompt, buildUserPrompt, RESPONSE_SCHEMA } from './prompt.js';
-import type { InterpretContext } from './types.js';
+import { buildSystemPrompt, buildUserPrompt, IMAGE_RULES, RESPONSE_SCHEMA } from './prompt.js';
+import type { ImageInput, InterpretContext } from './types.js';
 
 export class AIProviderError extends Error {
   constructor(
@@ -16,7 +16,7 @@ export interface ProviderOutput {
   provider: string;
 }
 
-export async function callGemini(ctx: InterpretContext, apiKey: string, model: string): Promise<ProviderOutput> {
+export async function callGemini(ctx: InterpretContext, apiKey: string, model: string, image?: ImageInput): Promise<ProviderOutput> {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
 
   const generationConfig: Record<string, unknown> = {
@@ -29,15 +29,18 @@ export async function callGemini(ctx: InterpretContext, apiKey: string, model: s
   if (model.startsWith('gemini-2.5')) generationConfig.thinkingConfig = { thinkingBudget: 0 };
 
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 12_000);
+  const timer = setTimeout(() => controller.abort(), image ? 25_000 : 12_000);
+  const userParts: Array<Record<string, unknown>> = [];
+  if (image) userParts.push({ inlineData: { mimeType: image.mimeType, data: image.data } });
+  userParts.push({ text: buildUserPrompt(ctx, Boolean(image)) });
   try {
     const res = await fetch(url, {
       method: 'POST',
       signal: controller.signal,
       headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
       body: JSON.stringify({
-        systemInstruction: { parts: [{ text: buildSystemPrompt(ctx) }] },
-        contents: [{ role: 'user', parts: [{ text: buildUserPrompt(ctx) }] }],
+        systemInstruction: { parts: [{ text: buildSystemPrompt(ctx) + (image ? IMAGE_RULES : '') }] },
+        contents: [{ role: 'user', parts: userParts }],
         generationConfig,
       }),
     });

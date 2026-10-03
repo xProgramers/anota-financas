@@ -8,6 +8,7 @@ import { ResetPasswordPage } from './features/auth/ResetPasswordPage';
 import { SignupPage } from './features/auth/SignupPage';
 import { CategoriesProvider } from './features/categories/CategoriesProvider';
 import { ChatPage } from './features/chat/ChatPage';
+import { ChatProvider } from './features/chat/ChatProvider';
 import { DashboardPage } from './features/dashboard/DashboardPage';
 import { SettingsPage } from './features/settings/SettingsPage';
 import { TransactionsPage } from './features/transactions/TransactionsPage';
@@ -42,7 +43,9 @@ export function App() {
           <Route
             element={
               <CategoriesProvider>
-                <AppLayout />
+                <ChatProvider>
+                  <AppLayout />
+                </ChatProvider>
               </CategoriesProvider>
             }
           >
