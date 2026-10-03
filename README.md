@@ -122,7 +122,7 @@ Copie `.env.example` para `.env` e preencha:
 | `SUPABASE_ANON_KEY` | função `/api` | igual à de cima |
 | `GEMINI_API_KEY` | função `/api` | chave do AI Studio (**secreta**) |
 | `GEMINI_MODEL` | função `/api` | opcional, modelo para texto (padrão `gemini-3.5-flash-lite`) |
-| `GEMINI_VISION_MODEL` | função `/api` | opcional, modelo para fotos de cupom (padrão `gemini-3.8-flash`) |
+| `GEMINI_VISION_MODEL` | função `/api` | opcional, modelo para fotos de cupom e áudios (padrão `gemini-3.8-flash`) |
 
 Nunca faça commit do `.env`, porque o `.gitignore` já o ignora. A `service_role` do Supabase **não** é necessária.
 
@@ -174,6 +174,14 @@ npm run build       # build de produção
 4. A foto **não é salva em lugar nenhum**: nem no banco, nem em storage, nem em logs. No histórico fica só o texto "📷 Foto de comprovante".
 5. A miniatura existe apenas na memória da página e é descartada quando o registro é confirmado ou cancelado, ou quando a foto não pôde ser lida.
 6. Sem `GEMINI_API_KEY`, o app avisa que a leitura de fotos precisa da IA.
+
+### Lançamento por áudio
+
+1. Com a caixa de texto vazia, o botão da direita vira um microfone. Um toque começa a gravar e outro toque encerra e envia. O X cancela. A gravação para sozinha em 1 minuto.
+2. O **navegador** converte a gravação (WebM no Chrome, MP4 no Safari) em WAV mono de 16 kHz, um formato que o Gemini aceita em qualquer caso.
+3. A função `/api/ai/interpret` valida o áudio e faz uma única chamada ao Gemini (`GEMINI_VISION_MODEL`), que transcreve e interpreta. O resultado é o mesmo cupom de confirmação das mensagens escritas.
+4. O áudio **não é salvo em lugar nenhum**. No histórico fica a transcrição (por exemplo, 🎤 "Gastei 45 reais na padaria"), para a pessoa conferir o que foi entendido. No navegador, o áudio só é guardado se o envio falhar (para "Tentar de novo") e é descartado quando o registro é confirmado ou cancelado.
+5. O microfone é liberado pela política `Permissions-Policy: microphone=(self)` em `vercel.json`.
 
 ### Chat limpo a cada acesso
 

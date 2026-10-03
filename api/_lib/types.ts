@@ -70,12 +70,26 @@ export interface Interpretation {
   clarification_question: string | null;
   query: QuerySpec | null;
   reply: string | null;
+  /** O que a pessoa disse, quando a mensagem veio por áudio. */
+  transcript: string | null;
 }
 
 /** Foto de comprovante. Fica só na memória durante a requisição; nunca é salva. */
 export interface ImageInput {
   data: string; // base64 sem prefixo data:
   mimeType: 'image/jpeg' | 'image/png' | 'image/webp';
+}
+
+/** Áudio gravado no app (WAV mono). Como a foto, fica só na memória durante a requisição. */
+export interface AudioInput {
+  data: string; // base64 sem prefixo data:
+  mimeType: 'audio/wav';
+}
+
+export type MediaInput = ImageInput | AudioInput;
+
+export function isAudio(media: MediaInput): media is AudioInput {
+  return media.mimeType.startsWith('audio/');
 }
 
 export interface InterpretContext {

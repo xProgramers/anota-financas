@@ -5,6 +5,7 @@ import { useLocation } from 'react-router-dom';
 import { toast } from 'sonner';
 import { Spinner } from '../../components/ui/States';
 import { addDays, formatBRDate, timeOf, todayIn } from '../../lib/format';
+import { prepareVoiceAudio } from '../../lib/audio';
 import { prepareReceiptImage } from '../../lib/image';
 import type { ChatMessage, Draft } from '../../types/db';
 import { useAuth } from '../auth/AuthProvider';
@@ -13,6 +14,7 @@ import { ChatInput } from './ChatInput';
 import { useChat, type LocalMessage } from './ChatProvider';
 import { DraftCard } from './DraftCard';
 import { usePhotoPicker } from './usePhotoPicker';
+import { useVoiceRecorder } from './useVoiceRecorder';
 
 const EXAMPLES = ['Gastei R$ 25 no almoço', 'Uber 18,50', 'Recebi meu salário de 4.500', 'Quanto gastei esse mês?'];
 
@@ -34,11 +36,12 @@ export function ChatPage() {
   const { today } = todayIn(tz);
   const chat = useChat();
   const [text, setText] = useState('');
-  const [preparing, setPreparing] = useState(false);
+  const [preparing, setPreparing] = useState<'photo' | 'audio' | null>(null);
   const [editing, setEditing] = useState<(ChatMessage & { draft: Draft }) | null>(null);
   const scroller = useRef<HTMLDivElement>(null);
   const photo = usePhotoPicker((file) => void sendPhoto(file));
   const pickPhoto = photo.open;
+  const voice = useVoiceRecorder((blob) => void sendAudio(blob));
   const firstRender = useRef(true);
 
   const latestPendingId = useMemo(
@@ -54,7 +57,7 @@ export function ChatPage() {
     firstRender.current = false;
   }, [chat.messages, chat.sending]);
 
-  const busy = Boolean(chat.sending) || preparing || !chat.ready;
+  const busy = Boolean(chat.sending) || Boolean(preparing) || !chat.ready;
 
   function submit(value = text) {
     const v = value.trim();
@@ -65,16 +68,29 @@ export function ChatPage() {
 
   async function sendPhoto(file: File) {
     if (busy) return;
-    setPreparing(true);
+    setPreparing('photo');
     try {
       const image = await prepareReceiptImage(file);
       const caption = text.trim();
       setText('');
-      void chat.send(caption, image);
+      void chat.send(caption, { image });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Não consegui usar essa foto.');
     } finally {
-      setPreparing(false);
+      setPreparing(null);
+    }
+  }
+
+  async function sendAudio(blob: Blob) {
+    if (busy) return;
+    setPreparing('audio');
+    try {
+      const audio = await prepareVoiceAudio(blob);
+      void chat.send('', { audio });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Não consegui usar esse áudio.');
+    } finally {
+      setPreparing(null);
     }
   }
 
@@ -93,7 +109,8 @@ export function ChatPage() {
                 {welcome || !firstName ? 'Vamos começar.' : `Oi, ${firstName}.`} Você pode escrever seus gastos normalmente.
               </h1>
               <p className="mt-3 text-[15px] text-muted">
-                Eu entendo o valor, a categoria e a data. Você só confirma. Também dá para mandar a foto de uma nota ou cupom fiscal.
+                Eu entendo o valor, a categoria e a data. Você só confirma. Também dá para mandar a foto de uma nota ou cupom fiscal, ou
+                tocar no microfone e falar onde e quanto gastou.
               </p>
               <div className="mt-8 flex flex-wrap gap-2">
                 <button
@@ -138,7 +155,11 @@ export function ChatPage() {
                   today={today}
                   currency={currency}
                   isLatestPending={m.id === latestPendingId}
-                  onRetry={() => void chat.send(m.content.replace(/^📷 Foto de comprovante:? ?/, ''), m.retryImage, m.id)}
+                  onRetry={() =>
+                    void (m.retryAudio
+                      ? chat.send('', { audio: m.retryAudio }, m.id)
+                      : chat.send(m.content.replace(/^📷 Foto de comprovante:? ?/, ''), { image: m.retryImage }, m.id))
+                  }
                   onConfirm={async (msg) => {
                     const d = msg.draft;
                     await chat.confirmDraft(msg, {
@@ -163,7 +184,15 @@ export function ChatPage() {
                 <span>•</span>
                 <span>•</span>
               </span>
-              {preparing ? 'Preparando a foto…' : chat.sending === 'photo' ? 'Lendo o comprovante…' : 'Analisando sua anotação…'}
+              {preparing === 'photo'
+                ? 'Preparando a foto…'
+                : preparing === 'audio'
+                  ? 'Preparando o áudio…'
+                  : chat.sending === 'photo'
+                    ? 'Lendo o comprovante…'
+                    : chat.sending === 'audio'
+                      ? 'Ouvindo seu áudio…'
+                      : 'Analisando sua anotação…'}
             </div>
           )}
         </div>
@@ -172,9 +201,19 @@ export function ChatPage() {
       <div className="shrink-0 bg-gradient-to-t from-paper via-paper to-paper/0 pt-2 pb-[max(12px,env(safe-area-inset-bottom))]">
         <div className="mx-auto w-full max-w-2xl px-3 md:px-6">
           {photo.element}
-          <ChatInput value={text} onChange={setText} onSend={() => submit()} onPickPhoto={pickPhoto} disabled={busy} />
+          <ChatInput
+            value={text}
+            onChange={setText}
+            onSend={() => submit()}
+            onPickPhoto={pickPhoto}
+            disabled={busy}
+            recording={voice.state}
+            recordSeconds={voice.seconds}
+            onToggleRecord={voice.toggle}
+            onCancelRecord={voice.cancel}
+          />
           <p className="mt-2 hidden text-center text-xs text-muted md:block">
-            Enter envia, Shift + Enter quebra a linha. Fotos não são guardadas.
+            Enter envia, Shift + Enter quebra a linha. Fotos e áudios não são guardados.
           </p>
         </div>
       </div>
@@ -236,6 +275,7 @@ function MessageRow({ message: m, showTime, today, currency, isLatestPending, on
           {m.content}
         </div>
         {m.photoDiscarded && <span className="mt-1 text-[11px] text-muted">Foto descartada</span>}
+        {m.audioDiscarded && <span className="mt-1 text-[11px] text-muted">Áudio descartado</span>}
         {m.local === 'failed' && (
           <button type="button" onClick={onRetry} className="mt-1 flex items-center gap-1 text-xs font-medium text-danger">
             <AlertCircle className="size-3.5" /> Não enviada. <RotateCw className="size-3" /> Tentar de novo

@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { toast } from 'sonner';
 import { errorMessage } from '../../lib/format';
+import type { PreparedAudio } from '../../lib/audio';
 import type { PreparedImage } from '../../lib/image';
 import { supabase } from '../../lib/supabase';
 import type { ChatMessage, DraftStatus, Transaction } from '../../types/db';
@@ -16,6 +17,10 @@ export interface LocalMessage extends ChatMessage {
   photoDiscarded?: boolean;
   /** guardada só para "Tentar de novo" se o envio falhar */
   retryImage?: PreparedImage;
+  /** o áudio existiu, mas já foi descartado */
+  audioDiscarded?: boolean;
+  /** guardado só para "Tentar de novo" se o envio falhar */
+  retryAudio?: PreparedAudio;
 }
 
 interface InterpretResponse {
@@ -28,8 +33,8 @@ interface InterpretResponse {
 interface ChatState {
   messages: LocalMessage[];
   ready: boolean;
-  sending: 'text' | 'photo' | null;
-  send: (text: string, image?: PreparedImage, retryId?: string) => Promise<void>;
+  sending: 'text' | 'photo' | 'audio' | null;
+  send: (text: string, media?: { image?: PreparedImage; audio?: PreparedAudio }, retryId?: string) => Promise<void>;
   confirmDraft: (message: ChatMessage, values: TransactionInput) => Promise<void>;
   discardDraft: (message: ChatMessage) => Promise<void>;
 }
@@ -45,7 +50,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   const userId = session!.user.id;
   const [messages, setMessages] = useState<LocalMessage[]>([]);
   const [ready, setReady] = useState(false);
-  const [sending, setSending] = useState<'text' | 'photo' | null>(null);
+  const [sending, setSending] = useState<'text' | 'photo' | 'audio' | null>(null);
   const photoUrls = useRef(new Set<string>());
 
   // Nova página = conversa nova. Rascunhos que ficaram pendentes da sessão anterior
@@ -71,24 +76,29 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     return () => urls.forEach((u) => URL.revokeObjectURL(u));
   }, []);
 
-  /** Descarta as fotos: depois de confirmar ou cancelar, elas não existem mais em lugar nenhum. */
-  const discardPhotos = useCallback(() => {
+  /** Descarta fotos e áudios: depois de confirmar ou cancelar, eles não existem mais em lugar nenhum. */
+  const discardMedia = useCallback(() => {
     photoUrls.current.forEach((u) => URL.revokeObjectURL(u));
     photoUrls.current.clear();
     setMessages((prev) =>
-      prev.map((m) => (m.photoUrl || m.retryImage ? { ...m, photoUrl: undefined, retryImage: undefined, photoDiscarded: true } : m)),
+      prev.map((m) => {
+        if (m.photoUrl || m.retryImage) m = { ...m, photoUrl: undefined, retryImage: undefined, photoDiscarded: true };
+        if (m.retryAudio || m.content.startsWith('🎤')) m = { ...m, retryAudio: undefined, audioDiscarded: true };
+        return m;
+      }),
     );
   }, []);
 
   const send = useCallback(
-    async (text: string, image?: PreparedImage, retryId?: string) => {
+    async (text: string, media: { image?: PreparedImage; audio?: PreparedAudio } = {}, retryId?: string) => {
+      const { image, audio } = media;
       const tempId = retryId ?? `local-${crypto.randomUUID()}`;
       if (image) photoUrls.current.add(image.previewUrl);
       const optimistic: LocalMessage = {
         id: tempId,
         user_id: userId,
         role: 'user',
-        content: image ? `📷 Foto de comprovante${text ? `: ${text}` : ''}` : text,
+        content: audio ? '🎤 Áudio' : image ? `📷 Foto de comprovante${text ? `: ${text}` : ''}` : text,
         transaction_id: null,
         draft: null,
         draft_status: null,
@@ -97,10 +107,14 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         photoUrl: image?.previewUrl,
       };
       setMessages((prev) => (retryId ? prev.map((m) => (m.id === retryId ? optimistic : m)) : [...prev, optimistic]));
-      setSending(image ? 'photo' : 'text');
+      setSending(audio ? 'audio' : image ? 'photo' : 'text');
 
       try {
-        const payload = JSON.stringify({ message: text, image: image ? { data: image.data, mimeType: image.mimeType } : undefined });
+        const payload = JSON.stringify({
+          message: text,
+          image: image ? { data: image.data, mimeType: image.mimeType } : undefined,
+          audio: audio ? { data: audio.data, mimeType: audio.mimeType } : undefined,
+        });
         const call = (token: string) =>
           fetch('/api/ai/interpret', {
             method: 'POST',
@@ -136,19 +150,19 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 
         const statuses = [...statusById.values()];
         const closed = statuses.includes('confirmed') || (statuses.includes('discarded') && !assistant?.draft);
-        // Foto que não virou rascunho (ilegível, não é cupom) é descartada na hora.
-        if (closed || (image && !assistant?.draft)) discardPhotos();
+        // Foto ou áudio que não virou rascunho (ilegível, não é um gasto) é descartado na hora.
+        if (closed || ((image || audio) && !assistant?.draft)) discardMedia();
         if (body.transaction) {
           toast.success(body.transaction.type === 'income' ? 'Receita registrada' : 'Despesa registrada');
         }
       } catch (err) {
-        setMessages((prev) => prev.map((m) => (m.id === tempId ? { ...m, local: 'failed', retryImage: image } : m)));
+        setMessages((prev) => prev.map((m) => (m.id === tempId ? { ...m, local: 'failed', retryImage: image, retryAudio: audio } : m)));
         toast.error(errorMessage(err));
       } finally {
         setSending(null);
       }
     },
-    [userId, discardPhotos],
+    [userId, discardMedia],
   );
 
   const confirmDraft = useCallback(
@@ -187,10 +201,10 @@ export function ChatProvider({ children }: { children: ReactNode }) {
             : m,
         ),
       );
-      discardPhotos();
+      discardMedia();
       toast.success(tx.type === 'income' ? 'Receita registrada ✓' : 'Despesa registrada ✓');
     },
-    [discardPhotos],
+    [discardMedia],
   );
 
   const discardDraft = useCallback(
@@ -205,9 +219,9 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         return;
       }
       setMessages((prev) => prev.map((m) => (m.id === message.id ? { ...m, draft_status: 'discarded' } : m)));
-      discardPhotos();
+      discardMedia();
     },
-    [discardPhotos],
+    [discardMedia],
   );
 
   return (

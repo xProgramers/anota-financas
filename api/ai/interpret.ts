@@ -8,7 +8,7 @@ import { todayIn } from '../_lib/dates.js';
 import { describeDraft, interpret, type Provider } from '../_lib/engine.js';
 import { callGemini } from '../_lib/gemini.js';
 import { formatBRL } from '../_lib/money.js';
-import type { CategoryRef, Draft, ImageInput, InterpretContext } from '../_lib/types.js';
+import type { AudioInput, CategoryRef, Draft, ImageInput, InterpretContext } from '../_lib/types.js';
 
 const MAX_MESSAGE = 500;
 const LIMIT_PER_MINUTE = 12;
@@ -16,6 +16,8 @@ const LIMIT_PER_DAY = 300;
 // ~3 MB de base64 (o navegador já reduz a foto para ~200–600 KB)
 const MAX_IMAGE_BASE64 = 4_000_000;
 const IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'] as const;
+// 60 s de WAV mono 16 kHz ≈ 1,9 MB → ~2,6 MB em base64
+const MAX_AUDIO_BASE64 = 3_000_000;
 
 /** Valida a foto recebida. Ela só existe na memória desta requisição. */
 function readImage(raw: unknown): ImageInput | null | 'invalid' {
@@ -26,6 +28,16 @@ function readImage(raw: unknown): ImageInput | null | 'invalid' {
   if (!(IMAGE_TYPES as readonly string[]).includes(mimeType)) return 'invalid';
   if (data.length < 100 || data.length > MAX_IMAGE_BASE64 || !/^[A-Za-z0-9+/]+=*$/.test(data)) return 'invalid';
   return { data, mimeType: mimeType as ImageInput['mimeType'] };
+}
+
+/** Valida o áudio recebido. Como a foto, ele só existe na memória desta requisição. */
+function readAudio(raw: unknown): AudioInput | null | 'invalid' {
+  if (raw == null) return null;
+  if (typeof raw !== 'object') return 'invalid';
+  const { data, mimeType } = raw as { data?: unknown; mimeType?: unknown };
+  if (typeof data !== 'string' || mimeType !== 'audio/wav') return 'invalid';
+  if (data.length < 100 || data.length > MAX_AUDIO_BASE64 || !/^[A-Za-z0-9+/]+=*$/.test(data)) return 'invalid';
+  return { data, mimeType };
 }
 
 function json(body: unknown, status = 200): Response {
@@ -112,7 +124,10 @@ export async function POST(request: Request): Promise<Response> {
   const text = rawText.replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, '').trim();
   const image = readImage((body as { image?: unknown })?.image);
   if (image === 'invalid') return json({ error: 'Foto inválida ou grande demais. Use JPG, PNG ou WebP.' }, 400);
-  if (!text && !image) return json({ error: 'Digite uma mensagem.' }, 400);
+  const audio = readAudio((body as { audio?: unknown })?.audio);
+  if (audio === 'invalid') return json({ error: 'Áudio inválido ou longo demais. Grave até 1 minuto.' }, 400);
+  if (audio && image) return json({ error: 'Envie a foto e o áudio separadamente.' }, 400);
+  if (!text && !image && !audio) return json({ error: 'Digite uma mensagem.' }, 400);
   if (text.length > MAX_MESSAGE) return json({ error: `A mensagem pode ter no máximo ${MAX_MESSAGE} caracteres.` }, 400);
 
   try {
@@ -159,22 +174,36 @@ export async function POST(request: Request): Promise<Response> {
     };
 
     // ---------- Mensagem do usuário ----------
+    // A foto e o áudio em si não são salvos: só um marcador (e, no áudio, a transcrição) no histórico.
+    const content = audio ? '🎤 Áudio' : image ? `📷 Foto de comprovante${text ? `: ${text}` : ''}`.slice(0, 2000) : text;
     const { data: userMessage, error: userMsgError } = await db
       .from('chat_messages')
-      // A foto em si não é salva: só um marcador no histórico.
-      .insert({ user_id: userId, role: 'user', content: image ? `📷 Foto de comprovante${text ? `: ${text}` : ''}`.slice(0, 2000) : text })
+      .insert({ user_id: userId, role: 'user', content })
       .select()
       .single();
     if (userMsgError) throw userMsgError;
 
     // ---------- Interpretação ----------
     const apiKey = env('GEMINI_API_KEY');
-    // Texto: modelo leve (limites gratuitos maiores). Foto: modelo mais forte para ler o cupom.
+    // Texto: modelo leve (limites gratuitos maiores). Foto e áudio: modelo multimodal mais forte.
     const textModel = env('GEMINI_MODEL') ?? 'gemini-3.5-flash-lite';
     const visionModel = env('GEMINI_VISION_MODEL') ?? 'gemini-3.8-flash';
-    const provider: Provider | null = apiKey ? (c, img) => callGemini(c, apiKey, img ? visionModel : textModel, img) : null;
-    const out = await interpret(ctx, provider, image ?? undefined);
+    const provider: Provider | null = apiKey ? (c, media) => callGemini(c, apiKey, media ? visionModel : textModel, media) : null;
+    const out = await interpret(ctx, provider, audio ?? image ?? undefined);
     if (out.error) console.warn('[ai] fallback para interpretador local:', out.error);
+
+    // No áudio, o histórico guarda o que foi entendido, para a pessoa conferir.
+    const transcript = audio ? out.interpretation?.transcript : null;
+    if (transcript) {
+      const { data: withTranscript, error } = await db
+        .from('chat_messages')
+        .update({ content: `🎤 "${transcript}"`.slice(0, 2000) })
+        .eq('id', userMessage.id)
+        .select()
+        .single();
+      if (error) throw error;
+      Object.assign(userMessage, withTranscript);
+    }
 
     await db.from('ai_interpretations').insert({
       user_id: userId,
