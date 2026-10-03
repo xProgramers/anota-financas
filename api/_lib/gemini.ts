@@ -21,7 +21,8 @@ export async function callGemini(ctx: InterpretContext, apiKey: string, model: s
 
   const generationConfig: Record<string, unknown> = {
     temperature: 0,
-    maxOutputTokens: 600,
+    // folga para modelos que "pensam" antes de responder
+    maxOutputTokens: 2048,
     responseMimeType: 'application/json',
     responseSchema: RESPONSE_SCHEMA,
   };

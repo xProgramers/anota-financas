@@ -169,8 +169,10 @@ export async function POST(request: Request): Promise<Response> {
 
     // ---------- Interpretação ----------
     const apiKey = env('GEMINI_API_KEY');
-    const model = env('GEMINI_MODEL') ?? 'gemini-2.5-flash';
-    const provider: Provider | null = apiKey ? (c, img) => callGemini(c, apiKey, model, img) : null;
+    // Texto: modelo leve (limites gratuitos maiores). Foto: modelo mais forte para ler o cupom.
+    const textModel = env('GEMINI_MODEL') ?? 'gemini-3.5-flash-lite';
+    const visionModel = env('GEMINI_VISION_MODEL') ?? 'gemini-3.8-flash';
+    const provider: Provider | null = apiKey ? (c, img) => callGemini(c, apiKey, img ? visionModel : textModel, img) : null;
     const out = await interpret(ctx, provider, image ?? undefined);
     if (out.error) console.warn('[ai] fallback para interpretador local:', out.error);
 

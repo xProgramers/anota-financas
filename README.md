@@ -121,7 +121,8 @@ Copie `.env.example` para `.env` e preencha:
 | `SUPABASE_URL` | função `/api` | igual à de cima |
 | `SUPABASE_ANON_KEY` | função `/api` | igual à de cima |
 | `GEMINI_API_KEY` | função `/api` | chave do AI Studio (**secreta**) |
-| `GEMINI_MODEL` | função `/api` | opcional, o padrão é `gemini-2.5-flash` |
+| `GEMINI_MODEL` | função `/api` | opcional, modelo para texto (padrão `gemini-3.5-flash-lite`) |
+| `GEMINI_VISION_MODEL` | função `/api` | opcional, modelo para fotos de cupom (padrão `gemini-3.8-flash`) |
 
 Nunca faça commit do `.env`, porque o `.gitignore` já o ignora. A `service_role` do Supabase **não** é necessária.
 
