@@ -1,4 +1,4 @@
-import { AlertCircle, RotateCw } from 'lucide-react';
+import { AlertCircle, Camera, RotateCw } from 'lucide-react';
 import { Fragment, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -35,6 +35,8 @@ export function ChatPage() {
   const [preparing, setPreparing] = useState(false);
   const [editing, setEditing] = useState<(ChatMessage & { draft: Draft }) | null>(null);
   const scroller = useRef<HTMLDivElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const pickPhoto = () => fileRef.current?.click();
   const firstRender = useRef(true);
 
   const latestPendingId = useMemo(
@@ -92,6 +94,14 @@ export function ChatPage() {
                 Eu entendo o valor, a categoria e a data. Você só confirma. Também dá para mandar a foto de uma nota ou cupom fiscal.
               </p>
               <div className="mt-8 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={pickPhoto}
+                  className="inline-flex items-center gap-2 rounded-full bg-brand px-3.5 py-2 text-sm font-medium text-brand-ink transition hover:brightness-110"
+                >
+                  <Camera className="size-4" aria-hidden />
+                  Foto de nota ou cupom
+                </button>
                 {EXAMPLES.map((ex) => (
                   <button
                     key={ex}
@@ -159,7 +169,18 @@ export function ChatPage() {
 
       <div className="shrink-0 bg-gradient-to-t from-paper via-paper to-paper/0 pt-2 pb-[max(12px,env(safe-area-inset-bottom))]">
         <div className="mx-auto w-full max-w-2xl px-3 md:px-6">
-          <ChatInput value={text} onChange={setText} onSend={() => submit()} onPhoto={(f) => void sendPhoto(f)} disabled={busy} />
+          <input
+            ref={fileRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              e.target.value = ''; // permite escolher a mesma foto de novo
+              if (file) void sendPhoto(file);
+            }}
+          />
+          <ChatInput value={text} onChange={setText} onSend={() => submit()} onPickPhoto={pickPhoto} disabled={busy} />
           <p className="mt-2 hidden text-center text-xs text-muted md:block">
             Enter envia, Shift + Enter quebra a linha. Fotos não são guardadas.
           </p>

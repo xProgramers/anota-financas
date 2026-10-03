@@ -7,13 +7,12 @@ interface Props {
   value: string;
   onChange: (v: string) => void;
   onSend: () => void;
-  onPhoto: (file: File) => void;
+  onPickPhoto: () => void;
   disabled: boolean;
 }
 
-export function ChatInput({ value, onChange, onSend, onPhoto, disabled }: Props) {
+export function ChatInput({ value, onChange, onSend, onPickPhoto, disabled }: Props) {
   const ref = useRef<HTMLTextAreaElement>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
 
   // altura automática (até ~5 linhas)
   useEffect(() => {
@@ -38,26 +37,16 @@ export function ChatInput({ value, onChange, onSend, onPhoto, disabled }: Props)
 
   return (
     <div className="relative flex items-end gap-1.5 rounded-2xl border border-line bg-surface p-2 shadow-sm focus-within:border-brand focus-within:ring-2 focus-within:ring-brand/15">
-      <input
-        ref={fileRef}
-        type="file"
-        accept="image/*"
-        className="hidden"
-        onChange={(e) => {
-          const file = e.target.files?.[0];
-          e.target.value = ''; // permite escolher a mesma foto de novo
-          if (file) onPhoto(file);
-        }}
-      />
       <button
         type="button"
-        onClick={() => fileRef.current?.click()}
+        onClick={onPickPhoto}
         disabled={disabled}
         aria-label="Enviar foto de nota ou cupom fiscal"
-        title="Foto de nota ou cupom fiscal"
-        className="flex size-10 shrink-0 items-center justify-center rounded-xl text-muted transition hover:bg-ink/5 hover:text-brand disabled:opacity-35"
+        title="Tirar ou escolher foto de nota/cupom fiscal"
+        className="flex h-10 shrink-0 items-center gap-1.5 rounded-xl bg-brand-soft px-3 text-sm font-semibold text-brand transition hover:brightness-95 disabled:opacity-35"
       >
-        <Camera className="size-5" />
+        <Camera className="size-5" aria-hidden />
+        <span className="hidden sm:inline">Foto</span>
       </button>
       <label htmlFor="chat-input" className="sr-only">
         Mensagem
