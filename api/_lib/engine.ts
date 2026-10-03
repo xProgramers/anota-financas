@@ -217,6 +217,11 @@ async function interpretImage(ctx: InterpretContext, provider: Provider | null, 
   }
 }
 
+/** Falha passageira do provedor (sobrecarga, limite, tempo esgotado). */
+function aiBusy(err: unknown): boolean {
+  return err instanceof Error && /\b(429|500|503|504)\b|Tempo esgotado/.test(err.message);
+}
+
 /**
  * Áudio: a IA transcreve e interpreta na mesma chamada.
  * Não há fallback local (sem transcrição não há texto); o áudio não sai desta função.
@@ -250,7 +255,12 @@ async function interpretAudio(ctx: InterpretContext, provider: Provider | null, 
     return { result: finalize(interpretation, audioCtx), interpretation, raw: out.raw, provider: out.provider };
   } catch (err) {
     return {
-      result: { kind: 'message', text: 'Não consegui entender o áudio agora. Tente gravar de novo ou digite o gasto.' },
+      result: {
+        kind: 'message',
+        text: aiBusy(err)
+          ? 'A IA está sobrecarregada neste momento. Tente gravar de novo em alguns segundos ou digite o gasto.'
+          : 'Não consegui entender o áudio agora. Tente gravar de novo ou digite o gasto.',
+      },
       interpretation: null,
       raw: null,
       provider: 'gemini',

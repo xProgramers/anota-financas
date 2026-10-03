@@ -6,7 +6,7 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { answerQuery } from '../_lib/answers.js';
 import { todayIn } from '../_lib/dates.js';
 import { describeDraft, interpret, type Provider } from '../_lib/engine.js';
-import { callGemini } from '../_lib/gemini.js';
+import { AIProviderError, callGemini } from '../_lib/gemini.js';
 import { formatBRL } from '../_lib/money.js';
 import type { AudioInput, CategoryRef, Draft, ImageInput, InterpretContext } from '../_lib/types.js';
 
@@ -188,7 +188,20 @@ export async function POST(request: Request): Promise<Response> {
     // Texto: modelo leve (limites gratuitos maiores). Foto e áudio: modelo multimodal mais forte.
     const textModel = env('GEMINI_MODEL') ?? 'gemini-3.5-flash-lite';
     const visionModel = env('GEMINI_VISION_MODEL') ?? 'gemini-3.8-flash';
-    const provider: Provider | null = apiKey ? (c, media) => callGemini(c, apiKey, media ? visionModel : textModel, media) : null;
+    const provider: Provider | null = apiKey
+      ? async (c, media) => {
+          if (!media) return callGemini(c, apiKey, textModel);
+          try {
+            return await callGemini(c, apiKey, visionModel, media);
+          } catch (err) {
+            // Modelo multimodal sobrecarregado ou fora do ar: o modelo leve também lê foto e áudio.
+            const transient = err instanceof AIProviderError && (err.status === undefined || [429, 500, 503, 504].includes(err.status));
+            if (!transient || visionModel === textModel) throw err;
+            console.warn('[ai] modelo multimodal indisponível, tentando o modelo leve:', err.message);
+            return callGemini(c, apiKey, textModel, media);
+          }
+        }
+      : null;
     const out = await interpret(ctx, provider, audio ?? image ?? undefined);
     if (out.error) console.warn('[ai] fallback para interpretador local:', out.error);
 

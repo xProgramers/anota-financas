@@ -208,5 +208,7 @@ test('áudio: sem IA, sem transcrição ou com falha vira mensagem', async () =>
   assert.ok(confirma.result.kind === 'message' && /Ouvi: "sim"/.test(confirma.result.text));
 
   const falha = await interpret(ctx(''), async () => { throw new Error('boom'); }, audio);
-  assert.ok(falha.result.kind === 'message' && falha.error === 'boom');
+  assert.ok(falha.result.kind === 'message' && falha.error === 'boom' && /entender/.test(falha.result.text));
+  const ocupada = await interpret(ctx(''), async () => { throw new Error('Gemini respondeu 503: high demand'); }, audio);
+  assert.ok(ocupada.result.kind === 'message' && /sobrecarregada/.test(ocupada.result.text));
 });
