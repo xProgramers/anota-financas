@@ -100,21 +100,27 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       setSending(image ? 'photo' : 'text');
 
       try {
+        const payload = JSON.stringify({ message: text, image: image ? { data: image.data, mimeType: image.mimeType } : undefined });
+        const call = (token: string) =>
+          fetch('/api/ai/interpret', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+            body: payload,
+          });
+
         const { data: sessionData } = await supabase.auth.getSession();
         const token = sessionData.session?.access_token;
         if (!token) throw new Error('Sua sessão expirou. Entre novamente.');
 
-        const res = await fetch('/api/ai/interpret', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-          body: JSON.stringify({ message: text, image: image ? { data: image.data, mimeType: image.mimeType } : undefined }),
-        });
+        let res = await call(token);
+        // Token vencido (aba parada por muito tempo): renova a sessão e tenta mais uma vez.
+        if (res.status === 401) {
+          const { data: refreshed } = await supabase.auth.refreshSession();
+          if (refreshed.session) res = await call(refreshed.session.access_token);
+        }
         const body = (await res.json().catch(() => ({}))) as Partial<InterpretResponse>;
         if (!res.ok || !body.messages) {
-          if (res.status === 401) {
-            toast.error(body.error ?? 'Sua sessão expirou. Entre novamente.');
-            await supabase.auth.signOut();
-          }
+          if (res.status === 401) await supabase.auth.signOut();
           throw new Error(body.error ?? 'Não consegui processar sua mensagem agora.');
         }
 
