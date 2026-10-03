@@ -1,0 +1,123 @@
+@import 'tailwindcss';
+
+/* Tema: papel levemente esverdeado + tinta de cédula. Modo escuro automático. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'Spline Sans Mono', ui-monospace, monospace;
+
+  --color-paper: var(--paper);
+  --color-surface: var(--surface);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --color-brand: var(--brand);
+  --color-brand-ink: var(--brand-ink);
+  --color-brand-soft: var(--brand-soft);
+  --color-expense: var(--expense);
+  --color-income: var(--income);
+  --color-danger: var(--danger);
+}
+
+:root {
+  --paper: #f3f5f4;
+  --surface: #ffffff;
+  --ink: #15211c;
+  --muted: #5f6c66;
+  --line: #dce3df;
+  --brand: #0f6b4f;
+  --brand-ink: #ffffff;
+  --brand-soft: #e2efe9;
+  --expense: #a8402d;
+  --income: #0f6b4f;
+  --danger: #b42318;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #0e1412;
+    --surface: #151d1a;
+    --ink: #e6ede9;
+    --muted: #93a29b;
+    --line: #26322d;
+    --brand: #3fb58a;
+    --brand-ink: #06140f;
+    --brand-soft: #173128;
+    --expense: #ef8a73;
+    --income: #5fd0a4;
+    --danger: #f97066;
+    color-scheme: dark;
+  }
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-feature-settings: 'tnum' 1;
+  -webkit-font-smoothing: antialiased;
+}
+
+:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+
+/* Borda serrilhada do "cupom" que mostra a interpretação da IA */
+.receipt {
+  --tooth: 7px;
+  background: var(--surface);
+  -webkit-mask:
+    conic-gradient(from -45deg at bottom, #0000, #000 1deg 89deg, #0000 90deg) bottom / calc(2 * var(--tooth)) var(--tooth) repeat-x,
+    linear-gradient(#000 0 0) top / 100% calc(100% - var(--tooth)) no-repeat;
+  mask:
+    conic-gradient(from -45deg at bottom, #0000, #000 1deg 89deg, #0000 90deg) bottom / calc(2 * var(--tooth)) var(--tooth) repeat-x,
+    linear-gradient(#000 0 0) top / 100% calc(100% - var(--tooth)) no-repeat;
+  padding-bottom: calc(var(--tooth) + 14px);
+}
+
+.dotted-rule {
+  border-top: 1.5px dashed var(--line);
+}
+
+@keyframes print-in {
+  from {
+    clip-path: inset(0 0 100% 0);
+  }
+  to {
+    clip-path: inset(0 0 0 0);
+  }
+}
+
+.print-in {
+  animation: print-in 380ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+
+@keyframes dots {
+  0%, 80%, 100% { opacity: 0.25; }
+  40% { opacity: 1; }
+}
+
+.typing span {
+  animation: dots 1.2s infinite;
+}
+.typing span:nth-child(2) { animation-delay: 0.15s; }
+.typing span:nth-child(3) { animation-delay: 0.3s; }
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+}
