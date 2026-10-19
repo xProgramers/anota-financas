@@ -13,10 +13,10 @@ A IA interpreta a mensagem e mostra um "cupom" com o resultado. Nada é salvo an
 | Camada | Tecnologia |
 | --- | --- |
 | Front-end | React 19, TypeScript, Vite 7, Tailwind CSS 4, React Router 7 |
-| Back-end | Vercel Functions (`/api`), Node 22 |
+| Back-end | Cloudflare Workers (`/api`, com `nodejs_compat`) |
 | Banco e autenticação | Supabase (PostgreSQL, Auth, Row Level Security) |
 | IA | Google Gemini (plano gratuito do AI Studio), com interpretador local de reserva |
-| Hospedagem | Vercel |
+| Hospedagem | Cloudflare Workers (front como static assets + API no mesmo Worker) |
 
 ## 2. Arquitetura
 
@@ -97,8 +97,8 @@ O schema também inclui:
 1. Crie um projeto em [supabase.com](https://supabase.com).
 2. Abra **SQL Editor**, cole o conteúdo de `supabase/migrations/0001_schema.sql` e clique em **Run**. Com a CLI, o equivalente é `supabase db push`.
 3. Em **Authentication → URL Configuration**:
-   - **Site URL**: a URL do app na Vercel (ex.: `https://anota.vercel.app`).
-   - **Redirect URLs**: adicione `https://SEU-APP.vercel.app/**` e `http://localhost:5173/**`.
+   - **Site URL**: a URL do app na Cloudflare (ex.: `https://anota-financas.SEU-SUBDOMINIO.workers.dev`).
+   - **Redirect URLs**: adicione `https://anota-financas.SEU-SUBDOMINIO.workers.dev/**`, `http://localhost:8787/**` e `http://localhost:5173/**`.
 4. Opcional: em **Authentication → Providers → Email**, desligue *Confirm email* se quiser entrar sem confirmar o e-mail.
 5. Em **Project Settings → API**, copie a **Project URL** e a chave **anon / publishable**.
 
@@ -130,12 +130,11 @@ Nunca faça commit do `.env`, porque o `.gitignore` já o ignora. A `service_rol
 
 ```bash
 npm install
-npm i -g vercel        # para rodar as funções /api localmente
-vercel link            # vincula a pasta ao projeto da Vercel
-vercel dev             # front + /api em http://localhost:3000
+cp .dev.vars.example .dev.vars   # variáveis do servidor para o wrangler dev
+npm run dev:full                 # build + front e /api em http://localhost:8787
 ```
 
-Para usar só o Vite (porta 5173) apontando para um `vercel dev` já rodando: `API_PROXY=http://localhost:3000 npm run dev`.
+Para usar só o Vite (porta 5173, com recarga instantânea) apontando para um `wrangler dev` já rodando: `API_PROXY=http://localhost:8787 npm run dev`.
 
 Outros comandos:
 
@@ -145,12 +144,19 @@ npm test            # testes da interpretação (valores, datas, categorias, cor
 npm run build       # build de produção
 ```
 
-## 6. Deploy na Vercel
+## 6. Deploy na Cloudflare
 
-1. Importe o repositório na Vercel. O framework é detectado como **Vite**, e o `vercel.json` já configura as rotas da SPA.
-2. Em **Settings → Environment Variables**, adicione as variáveis da seção 4.3 para *Production* e *Preview*. Marque `GEMINI_API_KEY` como **Sensitive**.
-3. Faça o deploy. Depois, atualize a **Site URL** e as **Redirect URLs** no Supabase com o domínio final.
-4. Se mudar alguma variável, faça um *Redeploy* para ela valer.
+O app roda num único Worker (`wrangler.jsonc`): os arquivos de `dist/` são servidos como static assets, com fallback para o `index.html` (SPA), e só `/api/*` executa o código de `worker/index.ts`.
+
+1. No painel da Cloudflare, abra **Workers & Pages → Create → Import a repository** e escolha este repositório.
+   - **Build command**: `npm run build`
+   - **Deploy command**: `npx wrangler deploy`
+2. Em **Settings → Variables and Secrets** do Worker, adicione as variáveis da seção 4.3:
+   - `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY` como **Build variables** (o Vite as embute no front durante o build).
+   - `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `GEMINI_API_KEY` (como **Secret**) e os opcionais `GEMINI_MODEL`/`GEMINI_VISION_MODEL` como variáveis do Worker.
+3. Cada push na `main` faz um novo deploy. Depois do primeiro, atualize a **Site URL** e as **Redirect URLs** no Supabase com o domínio final.
+
+Pela linha de comando, o equivalente é `npx wrangler login` e `npm run deploy` (com as `VITE_*` no `.env`), e os secrets com `npx wrangler secret put GEMINI_API_KEY`.
 
 ## 7. Como a IA interpreta
 
@@ -181,7 +187,7 @@ npm run build       # build de produção
 2. O **navegador** converte a gravação (WebM no Chrome, MP4 no Safari) em WAV mono de 16 kHz, um formato que o Gemini aceita em qualquer caso.
 3. A função `/api/ai/interpret` valida o áudio e faz uma única chamada ao Gemini (`GEMINI_VISION_MODEL`), que transcreve e interpreta. O resultado é o mesmo cupom de confirmação das mensagens escritas.
 4. O áudio **não é salvo em lugar nenhum**. No histórico fica a transcrição (por exemplo, 🎤 "Gastei 45 reais na padaria"), para a pessoa conferir o que foi entendido. No navegador, o áudio só é guardado se o envio falhar (para "Tentar de novo") e é descartado quando o registro é confirmado ou cancelado.
-5. O microfone é liberado pela política `Permissions-Policy: microphone=(self)` em `vercel.json`.
+5. O microfone é liberado pela política `Permissions-Policy: microphone=(self)` em `public/_headers`.
 
 ### Chat limpo a cada acesso
 
@@ -192,7 +198,7 @@ O chat começa vazio sempre que a página é carregada. A conversa continua vis�
 - RLS em todas as tabelas, e as funções SQL usam `search_path` fixo.
 - A função `/api` valida o JWT do usuário, o tamanho da mensagem (500 caracteres), remove caracteres de controle e aplica limite de uso.
 - Erros internos não são devolvidos ao cliente.
-- Cabeçalhos de segurança (`X-Frame-Options`, `nosniff`, `Referrer-Policy`) estão definidos no `vercel.json`.
+- Cabeçalhos de segurança (`X-Frame-Options`, `nosniff`, `Referrer-Policy`) estão definidos em `public/_headers` (front) e em `worker/index.ts` (API).
 - A chave da IA nunca chega ao navegador.
 
 ## 9. Fora do MVP

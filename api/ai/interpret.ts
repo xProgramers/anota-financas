@@ -1,4 +1,4 @@
-// POST /api/ai/interpret
+// POST /api/ai/interpret (chamado por worker/index.ts)
 // Recebe a mensagem do chat, interpreta (Gemini → fallback local), executa a
 // ação (rascunho, confirmação, consulta) e devolve as mensagens geradas.
 // Toda leitura/escrita usa o token do próprio usuário → RLS do Supabase vale aqui também.
