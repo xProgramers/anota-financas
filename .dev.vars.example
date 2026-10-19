@@ -1,0 +1,4 @@
+# Copie para .dev.vars para rodar `npm run dev:full` (wrangler dev). Nunca faça commit do .dev.vars.
+SUPABASE_URL=https://SEU-PROJETO.supabase.co
+SUPABASE_ANON_KEY=sua-anon-ou-publishable-key
+GEMINI_API_KEY=

@@ -5,7 +5,7 @@ import { defineConfig } from 'vite';
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
-    // Em desenvolvimento, `vercel dev` serve /api; com `vite` puro, aponte para ele.
+    // Em desenvolvimento, `wrangler dev` (npm run dev:full) serve /api; com `vite` puro, aponte para ele.
     proxy: process.env.API_PROXY ? { '/api': process.env.API_PROXY } : undefined,
   },
 });
