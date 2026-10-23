@@ -62,11 +62,13 @@ src/
     chat/                # tela principal, cupom de confirmação, input
     transactions/        # lista com filtros, paginação, edição e exclusão
     dashboard/           # resumo do mês
+    goals/               # quadro de meta de economia (cofre desafio)
     categories/          # contexto e ícones
     settings/            # perfil, categorias, sair
   lib/                   # cliente Supabase, formatação, fusos
-supabase/migrations/0001_schema.sql
+supabase/migrations/    # 0001 schema inicial, 0002 erro da IA, 0003 metas
 tests/engine.test.ts     # testes da interpretação (sem rede)
+tests/board.test.ts      # testes da divisão da meta em casinhas
 ```
 
 ## 3. Banco de dados
@@ -80,6 +82,7 @@ O arquivo `supabase/migrations/0001_schema.sql` cria tudo:
 | `transactions` | receitas e despesas (`numeric(14,2)`, valor > 0, data, origem `chat`/`manual`) |
 | `chat_messages` | histórico do chat. O rascunho proposto pela IA fica em `draft` + `draft_status`. |
 | `ai_interpretations` | auditoria de cada interpretação. Também é a base do limite de uso. |
+| `savings_goals` e `savings_goal_cells` | metas de economia (migração `0003`). A meta é dividida em casinhas de R$ 5 a R$ 100; `marked_at` guarda quando cada uma foi marcada. |
 
 O schema também inclui:
 - **Enums** `transaction_type`, `chat_role`, `transaction_source` e `draft_status`.
@@ -95,7 +98,7 @@ O schema também inclui:
 
 ### 4.1 Supabase
 1. Crie um projeto em [supabase.com](https://supabase.com).
-2. Abra **SQL Editor**, cole o conteúdo de `supabase/migrations/0001_schema.sql` e clique em **Run**. Com a CLI, o equivalente é `supabase db push`.
+2. Abra **SQL Editor** e rode, em ordem, cada arquivo de `supabase/migrations/` (`0001`, `0002`, `0003`…). Com a CLI, o equivalente é `supabase db push`.
 3. Em **Authentication → URL Configuration**:
    - **Site URL**: a URL do app na Cloudflare (ex.: `https://anota-financas.SEU-SUBDOMINIO.workers.dev`).
    - **Redirect URLs**: adicione `https://anota-financas.SEU-SUBDOMINIO.workers.dev/**`, `http://localhost:8787/**` e `http://localhost:5173/**`.

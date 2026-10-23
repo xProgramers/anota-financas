@@ -1,4 +1,4 @@
-import { BarChart3, List, LogOut, MessageSquareText, Settings } from 'lucide-react';
+import { BarChart3, List, LogOut, MessageSquareText, PiggyBank, Settings } from 'lucide-react';
 import { NavLink, Outlet } from 'react-router-dom';
 import { Logo } from '../components/Logo';
 import { useAuth } from '../features/auth/AuthProvider';
@@ -7,6 +7,7 @@ const NAV = [
   { to: '/', label: 'Anotar', icon: MessageSquareText, end: true },
   { to: '/resumo', label: 'Resumo', icon: BarChart3 },
   { to: '/transacoes', label: 'Transações', icon: List },
+  { to: '/metas', label: 'Metas', icon: PiggyBank },
   { to: '/configuracoes', label: 'Configurações', icon: Settings },
 ];
 
