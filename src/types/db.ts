@@ -57,3 +57,21 @@ export interface Summary {
   by_category: Array<{ category_id: string | null; name: string; color: string; icon: string; total: number; count: number }>;
   by_day: Array<{ day: string; expense: number | null; income: number | null }>;
 }
+
+export interface SavingsGoal {
+  id: string;
+  user_id: string;
+  name: string;
+  target: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SavingsGoalCell {
+  id: string;
+  goal_id: string;
+  user_id: string;
+  position: number;
+  amount: number;
+  marked_at: string | null;
+}

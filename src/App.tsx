@@ -10,6 +10,8 @@ import { CategoriesProvider } from './features/categories/CategoriesProvider';
 import { ChatPage } from './features/chat/ChatPage';
 import { ChatProvider } from './features/chat/ChatProvider';
 import { DashboardPage } from './features/dashboard/DashboardPage';
+import { GoalBoardPage } from './features/goals/GoalBoardPage';
+import { GoalsPage } from './features/goals/GoalsPage';
 import { SettingsPage } from './features/settings/SettingsPage';
 import { TransactionsPage } from './features/transactions/TransactionsPage';
 import { AppLayout } from './layouts/AppLayout';
@@ -52,6 +54,8 @@ export function App() {
             <Route index element={<ChatPage />} />
             <Route path="/resumo" element={<DashboardPage />} />
             <Route path="/transacoes" element={<TransactionsPage />} />
+            <Route path="/metas" element={<GoalsPage />} />
+            <Route path="/metas/:id" element={<GoalBoardPage />} />
             <Route path="/configuracoes" element={<SettingsPage />} />
           </Route>
         </Route>

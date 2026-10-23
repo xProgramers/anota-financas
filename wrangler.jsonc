@@ -7,6 +7,8 @@
   "compatibility_flags": ["nodejs_compat"],
   "upload_source_maps": true,
   "observability": { "enabled": true },
+  // Builds de branches/PRs na Cloudflare usam `wrangler preview`, que exige este bloco (pode ser vazio)
+  "previews": {},
   "assets": {
     "directory": "./dist",
     "binding": "ASSETS",
