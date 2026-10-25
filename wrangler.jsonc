@@ -7,6 +7,14 @@
   "compatibility_flags": ["nodejs_compat"],
   "upload_source_maps": true,
   "observability": { "enabled": true },
+  // Cada deploy pelo Wrangler apaga as variáveis de texto criadas no painel e deixa só as daqui.
+  // Por isso as duas do Supabase (públicas: já vão no front) ficam neste arquivo.
+  // keep_vars preserva qualquer outra variável criada no painel; secrets (GEMINI_API_KEY) nunca são apagados.
+  "keep_vars": true,
+  "vars": {
+    "SUPABASE_URL": "https://yjaxixylmibtrvbmtcij.supabase.co",
+    "SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlqYXhpeHlsbWlidHJ2Ym10Y2lqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTA5ODMwNTEsImV4cCI6MjEwNjU1OTA1MX0.AWI5zFBXY9v125SEM96Tj7swek4GmHywo1KBFDK1N6M"
+  },
   // Builds de branches/PRs na Cloudflare usam `wrangler preview`, que exige este bloco (pode ser vazio)
   "previews": {},
   "assets": {
