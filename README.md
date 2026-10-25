@@ -156,7 +156,7 @@ O app roda num único Worker (`wrangler.jsonc`): os arquivos de `dist/` são ser
    - **Deploy command**: `npx wrangler deploy`
 2. Em **Settings → Variables and Secrets** do Worker, adicione as variáveis da seção 4.3:
    - `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY` como **Build variables** (o Vite as embute no front durante o build).
-   - `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `GEMINI_API_KEY` (como **Secret**) e os opcionais `GEMINI_MODEL`/`GEMINI_VISION_MODEL` como variáveis do Worker.
+   - `GEMINI_API_KEY` sempre como **Secret** (variável de texto comum some a cada deploy) e os opcionais `GEMINI_MODEL`/`GEMINI_VISION_MODEL` como variáveis do Worker. `SUPABASE_URL` e `SUPABASE_ANON_KEY` já vêm do `wrangler.jsonc` (`vars`), porque o deploy pelo Wrangler apaga as variáveis de texto criadas no painel.
 3. Cada push na `main` faz um novo deploy. Depois do primeiro, atualize a **Site URL** e as **Redirect URLs** no Supabase com o domínio final.
 
 Pela linha de comando, o equivalente é `npx wrangler login` e `npm run deploy` (com as `VITE_*` no `.env`), e os secrets com `npx wrangler secret put GEMINI_API_KEY`.
