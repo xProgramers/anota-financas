@@ -7,6 +7,9 @@ export interface TransactionInput {
   category_id: string | null;
   description: string;
   transaction_date: string;
+  /** Só vão ao banco quando a área de cartões está ativa (migration 0004). */
+  card_id?: string | null;
+  place?: string | null;
 }
 
 export interface TransactionFilters {

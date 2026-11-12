@@ -6,6 +6,8 @@ import { OnboardingPage } from './features/auth/OnboardingPage';
 import { RequireAuth } from './features/auth/RequireAuth';
 import { ResetPasswordPage } from './features/auth/ResetPasswordPage';
 import { SignupPage } from './features/auth/SignupPage';
+import { CardsPage } from './features/cards/CardsPage';
+import { CardsProvider } from './features/cards/CardsProvider';
 import { CategoriesProvider } from './features/categories/CategoriesProvider';
 import { ChatPage } from './features/chat/ChatPage';
 import { ChatProvider } from './features/chat/ChatProvider';
@@ -45,15 +47,18 @@ export function App() {
           <Route
             element={
               <CategoriesProvider>
-                <ChatProvider>
-                  <AppLayout />
-                </ChatProvider>
+                <CardsProvider>
+                  <ChatProvider>
+                    <AppLayout />
+                  </ChatProvider>
+                </CardsProvider>
               </CategoriesProvider>
             }
           >
             <Route index element={<ChatPage />} />
             <Route path="/resumo" element={<DashboardPage />} />
             <Route path="/transacoes" element={<TransactionsPage />} />
+            <Route path="/cartao" element={<CardsPage />} />
             <Route path="/metas" element={<GoalsPage />} />
             <Route path="/metas/:id" element={<GoalBoardPage />} />
             <Route path="/configuracoes" element={<SettingsPage />} />
