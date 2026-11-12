@@ -4,6 +4,7 @@ import { SelectField, TextField } from '../../components/ui/Field';
 import { Modal } from '../../components/ui/Modal';
 import { moneyInputValue, parseMoneyInput } from '../../lib/format';
 import type { TxType } from '../../types/db';
+import { useCards } from '../cards/CardsProvider';
 import { useCategories } from '../categories/CategoriesProvider';
 import type { TransactionInput } from './api';
 
@@ -13,6 +14,8 @@ export interface TransactionFormValues {
   category_id: string | null;
   description: string;
   transaction_date: string;
+  card_id?: string | null;
+  place?: string;
 }
 
 interface Props {
@@ -26,11 +29,14 @@ interface Props {
 
 export function TransactionModal({ open, title, submitLabel, initial, onClose, onSubmit }: Props) {
   const { categories } = useCategories();
+  const cards = useCards();
   const [type, setType] = useState<TxType>(initial.type);
   const [amount, setAmount] = useState(moneyInputValue(initial.amount));
   const [categoryId, setCategoryId] = useState(initial.category_id ?? '');
   const [description, setDescription] = useState(initial.description);
   const [date, setDate] = useState(initial.transaction_date);
+  const [cardId, setCardId] = useState(initial.card_id ?? '');
+  const [place, setPlace] = useState(initial.place ?? '');
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -41,6 +47,8 @@ export function TransactionModal({ open, title, submitLabel, initial, onClose, o
     setCategoryId(initial.category_id ?? '');
     setDescription(initial.description);
     setDate(initial.transaction_date);
+    setCardId(initial.card_id ?? '');
+    setPlace(initial.place ?? '');
     setError(null);
     setSaving(false);
   }, [open]);
@@ -63,6 +71,10 @@ export function TransactionModal({ open, title, submitLabel, initial, onClose, o
     if (!date) return setError('Informe a data.');
     setSaving(true);
     setError(null);
+    // Cartão e local só vão ao banco quando a área de cartões existe (migration 0004).
+    const extra = cards.available
+      ? { card_id: type === 'expense' && cardId ? cardId : null, place: place.trim().slice(0, 120) || null }
+      : {};
     try {
       await onSubmit({
         type,
@@ -70,6 +82,7 @@ export function TransactionModal({ open, title, submitLabel, initial, onClose, o
         category_id: categoryId,
         description: description.trim().slice(0, 200),
         transaction_date: date,
+        ...extra,
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Não foi possível salvar.');
@@ -115,7 +128,20 @@ export function TransactionModal({ open, title, submitLabel, initial, onClose, o
           ))}
         </SelectField>
         <TextField label="Descrição" maxLength={200} placeholder="Ex.: Almoço" value={description} onChange={(e) => setDescription(e.target.value)} />
+        {cards.available && (
+          <TextField label="Onde foi" maxLength={120} placeholder="Ex.: Shopping Iguatemi, Amazon, iFood" value={place} onChange={(e) => setPlace(e.target.value)} />
+        )}
         <TextField label="Data" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+        {cards.available && type === 'expense' && cards.cards.length > 0 && (
+          <SelectField label="Cartão de crédito" value={cardId} onChange={(e) => setCardId(e.target.value)}>
+            <option value="">Não foi no cartão</option>
+            {cards.cards.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </SelectField>
+        )}
         {error && (
           <p role="alert" className="text-sm text-danger">
             {error}

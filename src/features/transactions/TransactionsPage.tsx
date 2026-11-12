@@ -9,6 +9,7 @@ import { EmptyState, ErrorState, Spinner } from '../../components/ui/States';
 import { addDays, endOfMonth, errorMessage, formatMoney, friendlyDate, shiftMonth, startOfMonth, todayIn } from '../../lib/format';
 import type { Transaction, TxType } from '../../types/db';
 import { useAuth } from '../auth/AuthProvider';
+import { useCards } from '../cards/CardsProvider';
 import { useCategories } from '../categories/CategoriesProvider';
 import { CategoryIcon } from '../categories/CategoryIcon';
 import { createTransaction, deleteTransaction, listTransactions, PAGE_SIZE, updateTransaction, type TransactionFilters } from './api';
@@ -31,6 +32,7 @@ export function TransactionsPage() {
   const currency = profile?.currency ?? 'BRL';
   const { today } = todayIn(profile?.timezone ?? 'America/Sao_Paulo');
   const { categories, byId } = useCategories();
+  const { byId: cardsById } = useCards();
 
   const [search, setSearch] = useState('');
   const [type, setType] = useState<TxType | ''>('');
@@ -231,6 +233,8 @@ export function TransactionsPage() {
                     <p className="truncate text-[15px] font-medium">{tx.description || cat?.name || 'Sem descrição'}</p>
                     <p className="truncate text-sm text-muted">
                       {cat?.name ?? 'Sem categoria'}, {friendlyDate(tx.transaction_date, today).toLowerCase()}
+                      {tx.place ? `, ${tx.place}` : ''}
+                      {tx.card_id && cardsById.get(tx.card_id) ? `, cartão ${cardsById.get(tx.card_id)!.name}` : ''}
                     </p>
                   </div>
                   <p className={`shrink-0 font-mono text-[15px] font-semibold ${income ? 'text-income' : 'text-ink'}`}>
@@ -282,6 +286,8 @@ export function TransactionsPage() {
                   category_id: modal.tx.category_id,
                   description: modal.tx.description,
                   transaction_date: modal.tx.transaction_date,
+                  card_id: modal.tx.card_id ?? null,
+                  place: modal.tx.place ?? '',
                 }
           }
           onClose={() => setModal(null)}

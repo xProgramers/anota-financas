@@ -1,13 +1,15 @@
-import { Check, Pencil, X } from 'lucide-react';
+import { Check, CreditCard, Pencil, X } from 'lucide-react';
 import { useState } from 'react';
 import { Button } from '../../components/ui/Button';
 import { formatMoney, friendlyDate } from '../../lib/format';
-import type { ChatMessage, Draft } from '../../types/db';
+import type { Draft } from '../../types/db';
+import { useChat, type LocalMessage } from './ChatProvider';
+import { useCards } from '../cards/CardsProvider';
 import { useCategories } from '../categories/CategoriesProvider';
 import { CategoryIcon } from '../categories/CategoryIcon';
 
 interface Props {
-  message: ChatMessage & { draft: Draft };
+  message: LocalMessage & { draft: Draft };
   today: string;
   currency: string;
   isLatestPending: boolean;
@@ -91,6 +93,8 @@ export function DraftCard({ message, today, currency, isLatestPending, onConfirm
         </div>
       </div>
 
+      {status === 'confirmed' && !isIncome && message.transaction_id && <CardPicker message={message} />}
+
       {status === 'pending' && (
         <div className="mt-3 flex items-center gap-2">
           <Button size="sm" onClick={confirm} loading={confirming} disabled={!complete} icon={<Check className="size-4" />}>
@@ -104,6 +108,50 @@ export function DraftCard({ message, today, currency, isLatestPending, onConfirm
           </Button>
         </div>
       )}
+    </div>
+  );
+}
+
+/** Depois de registrada, a despesa pode ir para a fatura de um cartão com um toque. */
+function CardPicker({ message }: { message: LocalMessage & { draft: Draft } }) {
+  const { cards, available } = useCards();
+  const { assignCard } = useChat();
+  const [saving, setSaving] = useState<string | null>(null);
+  if (!available || cards.length === 0) return null;
+  const selected = message.cardId ?? null;
+
+  async function pick(id: string) {
+    setSaving(id);
+    await assignCard(message, selected === id ? null : id);
+    setSaving(null);
+  }
+
+  return (
+    <div className="mt-3">
+      <p className="mb-1.5 flex items-center gap-1.5 text-xs text-muted">
+        <CreditCard className="size-3.5" aria-hidden />
+        {selected ? 'Na fatura do cartão' : 'Passou no cartão de crédito?'}
+      </p>
+      <div className="flex flex-wrap gap-1.5">
+        {cards.map((c) => {
+          const on = selected === c.id;
+          return (
+            <button
+              key={c.id}
+              type="button"
+              aria-pressed={on}
+              disabled={saving !== null}
+              onClick={() => void pick(c.id)}
+              className={`flex items-center gap-1.5 rounded-full border px-3 py-1 text-sm font-medium transition disabled:opacity-60 ${
+                on ? 'border-ink bg-ink text-paper' : 'border-line bg-surface text-ink hover:border-ink/40'
+              }`}
+            >
+              {on ? <Check className="size-3.5" aria-hidden /> : <span className="size-2 rounded-full" style={{ backgroundColor: c.color }} aria-hidden />}
+              {c.name}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }

@@ -6,6 +6,7 @@ import type { PreparedImage } from '../../lib/image';
 import { supabase } from '../../lib/supabase';
 import type { ChatMessage, DraftStatus, Transaction } from '../../types/db';
 import { useAuth } from '../auth/AuthProvider';
+import { setTransactionCard } from '../cards/api';
 import type { TransactionInput } from '../transactions/api';
 
 export interface LocalMessage extends ChatMessage {
@@ -21,6 +22,8 @@ export interface LocalMessage extends ChatMessage {
   audioDiscarded?: boolean;
   /** guardado só para "Tentar de novo" se o envio falhar */
   retryAudio?: PreparedAudio;
+  /** cartão escolhido para a despesa já registrada */
+  cardId?: string | null;
 }
 
 interface InterpretResponse {
@@ -37,6 +40,7 @@ interface ChatState {
   send: (text: string, media?: { image?: PreparedImage; audio?: PreparedAudio }, retryId?: string) => Promise<void>;
   confirmDraft: (message: ChatMessage, values: TransactionInput) => Promise<void>;
   discardDraft: (message: ChatMessage) => Promise<void>;
+  assignCard: (message: ChatMessage, cardId: string | null) => Promise<void>;
 }
 
 const ChatContext = createContext<ChatState | null>(null);
@@ -143,7 +147,13 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         setMessages((prev) => [
           ...prev
             .filter((m) => m.id !== tempId)
-            .map((m) => (statusById.has(m.id) ? { ...m, draft_status: statusById.get(m.id)! } : m)),
+            .map((m) => {
+              if (!statusById.has(m.id)) return m;
+              const status = statusById.get(m.id)!;
+              // Confirmado por texto ("sim"): guarda a transação para poder ligar ao cartão depois.
+              const txId = status === 'confirmed' && body.transaction ? body.transaction.id : m.transaction_id;
+              return { ...m, draft_status: status, transaction_id: txId };
+            }),
           { ...userMsg, photoUrl: image?.previewUrl },
           assistant,
         ]);
@@ -181,6 +191,16 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         throw new Error(msg);
       }
       const tx = data as Transaction;
+      // Cartão e local são um passo à parte: se falharem, a despesa já está salva.
+      let cardId: string | null = null;
+      if (values.card_id || values.place) {
+        const { error: extraError } = await supabase
+          .from('transactions')
+          .update({ card_id: values.card_id ?? null, place: values.place ?? null })
+          .eq('id', tx.id);
+        if (extraError) toast.warning('Despesa salva, mas não consegui ligar ao cartão. Tente pelo comprovante.');
+        else cardId = values.card_id ?? null;
+      }
       setMessages((prev) =>
         prev.map((m) =>
           m.id === message.id
@@ -188,6 +208,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
                 ...m,
                 draft_status: 'confirmed',
                 transaction_id: tx.id,
+                cardId,
                 draft: m.draft && {
                   ...m.draft,
                   transaction_type: tx.type,
@@ -224,8 +245,20 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     [discardMedia],
   );
 
+  const assignCard = useCallback(async (message: ChatMessage, cardId: string | null) => {
+    if (!message.transaction_id) return;
+    try {
+      await setTransactionCard(message.transaction_id, cardId);
+      setMessages((prev) => prev.map((m) => (m.id === message.id ? { ...m, cardId } : m)));
+    } catch (err) {
+      toast.error(errorMessage(err));
+    }
+  }, []);
+
   return (
-    <ChatContext.Provider value={{ messages, ready, sending, send, confirmDraft, discardDraft }}>{children}</ChatContext.Provider>
+    <ChatContext.Provider value={{ messages, ready, sending, send, confirmDraft, discardDraft, assignCard }}>
+      {children}
+    </ChatContext.Provider>
   );
 }
 

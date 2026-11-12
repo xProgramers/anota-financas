@@ -33,6 +33,10 @@ export interface Transaction {
   description: string;
   transaction_date: string;
   source: 'chat' | 'manual';
+  /** cartão de crédito da compra (só existe depois da migration 0004) */
+  card_id?: string | null;
+  /** onde foi a compra (só existe depois da migration 0004) */
+  place?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -74,4 +78,15 @@ export interface SavingsGoalCell {
   position: number;
   amount: number;
   marked_at: string | null;
+}
+
+export interface CreditCard {
+  id: string;
+  user_id: string;
+  name: string;
+  closing_day: number;
+  due_day: number;
+  color: string;
+  created_at: string;
+  updated_at: string;
 }

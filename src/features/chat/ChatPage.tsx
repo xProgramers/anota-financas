@@ -229,6 +229,8 @@ export function ChatPage() {
             category_id: editing.draft.category_id,
             description: editing.draft.description ?? '',
             transaction_date: editing.draft.date,
+            card_id: null,
+            place: '',
           }}
           onClose={() => setEditing(null)}
           onSubmit={async (values) => {
@@ -285,7 +287,7 @@ function MessageRow({ message: m, showTime, today, currency, isLatestPending, on
     );
   }
 
-  const draftMessage = m.draft ? (m as ChatMessage & { draft: Draft }) : null;
+  const draftMessage = m.draft ? (m as LocalMessage & { draft: Draft }) : null;
   const question = draftMessage?.draft.clarification_question;
 
   return (
